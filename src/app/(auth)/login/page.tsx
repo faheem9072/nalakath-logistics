@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/Card';
 import { dataRepo } from '@/lib/data-service';
 import { ShieldCheck, Phone, KeyRound, ArrowRight, RotateCcw } from 'lucide-react';
 
+import { NalakathLogo } from '@/components/brand/NalakathLogo';
+
 export default function LoginPage() {
   const router = useRouter();
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
@@ -84,14 +86,16 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-bold text-xl mx-auto shadow-lg shadow-blue-500/20 mb-3">
-          FF
+    <div className="min-h-screen bg-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md text-center flex flex-col items-center">
+        <div className="p-2 bg-black rounded-full shadow-xl shadow-slate-900/10 mb-4 border border-slate-800">
+          <NalakathLogo size="lg" variant="circle" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">FleetFlow</h1>
-        <p className="text-xs text-slate-500 mt-1 uppercase tracking-wider font-semibold">
-          Commercial Fleet & Duty Management
+        <h1 className="text-2xl font-black tracking-tight text-slate-900 uppercase">
+          NALAKATH LOGISTICS
+        </h1>
+        <p className="text-xs text-rose-600 font-bold uppercase tracking-wider mt-1">
+          Since 1998 • Fleet & Duty Operations
         </p>
       </div>
 

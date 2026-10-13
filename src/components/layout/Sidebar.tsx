@@ -18,6 +18,8 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
+import { NalakathLogo } from '@/components/brand/NalakathLogo';
+
 const NAV_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Daily Assignments', href: '/assignments', icon: CalendarCheck2 },
@@ -36,15 +38,20 @@ export function Sidebar() {
   return (
     <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0 min-h-screen border-r border-slate-800">
       {/* Brand Header */}
-      <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-black/40">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20 font-bold text-lg">
-            FF
-          </div>
+          <NalakathLogo size="sm" variant="circle" />
           <div>
-            <h1 className="text-base font-bold text-white tracking-tight">FleetFlow</h1>
-            <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-              Fleet Operations
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-sm font-black text-white tracking-tight uppercase">
+                NALAKATH
+              </h1>
+              <span className="text-[9px] font-bold text-rose-500 bg-rose-950/80 px-1 py-0.2 rounded border border-rose-800/80">
+                1998
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+              Logistics Fleet
             </p>
           </div>
         </div>

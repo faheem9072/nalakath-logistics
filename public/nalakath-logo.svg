@@ -1,0 +1,48 @@
+<svg viewBox="0 0 300 300" width="300" height="300" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer circular black background -->
+  <circle cx="150" cy="150" r="145" fill="#0A0A0A" />
+
+  <!-- Red Truck Cab -->
+  <g>
+    <!-- Truck Roof fairing & body -->
+    <path d="M75 148 L75 125 Q75 118 84 116 L108 116 Q112 116 116 120 L132 136 L165 118 L165 148 Z" fill="#D92228" />
+    <rect x="75" y="132" width="55" height="28" rx="2" fill="#D92228" />
+
+    <!-- Truck Windshield glass -->
+    <path d="M112 121 L128 135 L108 135 L108 121 Z" fill="#0A0A0A" />
+    <rect x="92" y="121" width="12" height="14" rx="1" fill="#0A0A0A" />
+
+    <!-- Wheels -->
+    <circle cx="92" cy="160" r="14" fill="#0A0A0A" stroke="#D92228" strokeWidth="4" />
+    <circle cx="92" cy="160" r="6" fill="#D92228" />
+
+    <!-- Red & White grill lines below cabin -->
+    <rect x="110" y="148" width="6" height="15" fill="#FFFFFF" />
+    <rect x="119" y="148" width="6" height="15" fill="#FFFFFF" />
+    <rect x="128" y="148" width="6" height="15" fill="#FFFFFF" />
+    <line x1="75" y1="162" x2="135" y2="162" stroke="#D92228" stroke-width="3" />
+  </g>
+
+  <!-- Red accent line over NALAKATH -->
+  <path d="M132 122 L260 134" stroke="#D92228" stroke-width="4.5" stroke-linecap="round" />
+
+  <!-- NALAKATH text -->
+  <text x="136" y="160" fill="#FFFFFF" font-family="'Impact', 'Arial Black', sans-serif" font-weight="900" font-size="34" letter-spacing="0.5">NALAKATH</text>
+
+  <!-- Horizontal Divider Line Bar -->
+  <line x1="75" y1="168" x2="262" y2="168" stroke="#FFFFFF" stroke-width="3.5" />
+
+  <!-- "SINCE 1998" -->
+  <text x="82" y="180" fill="#FFFFFF" font-family="'Arial', sans-serif" font-weight="800" font-size="10" letter-spacing="0.8">SINCE 1998</text>
+
+  <!-- Vertical hatched bar divider -->
+  <line x1="138" y1="171" x2="138" y2="183" stroke="#FFFFFF" stroke-width="2.5" />
+  <line x1="142" y1="171" x2="142" y2="183" stroke="#FFFFFF" stroke-width="2.5" />
+  <line x1="146" y1="171" x2="146" y2="183" stroke="#FFFFFF" stroke-width="2.5" />
+
+  <!-- "L O G I S T I C S" -->
+  <text x="154" y="180" fill="#FFFFFF" font-family="'Arial Black', sans-serif" font-weight="900" font-size="10.5" letter-spacing="3">LOGISTICS</text>
+
+  <!-- Lower bounding line -->
+  <line x1="75" y1="185" x2="262" y2="185" stroke="#FFFFFF" stroke-width="3.5" />
+</svg>

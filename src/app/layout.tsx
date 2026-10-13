@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'FleetFlow — Fleet Management & Logistics Operations',
+  title: 'Nalakath Logistics — Fleet & Duty Management Operations',
   description:
-    'Enterprise transport fleet management system for vehicles, drivers, daily duty allocations, and verified distance tracking.',
+    'Official Fleet Management & Duty Operations Platform for Nalakath Logistics (Since 1998). Vehicle dispatch, duty scheduling, driver trips, and live odometer tracking.',
+  icons: {
+    icon: '/nalakath-logo.svg',
+  },
 };
 
 export default function RootLayout({

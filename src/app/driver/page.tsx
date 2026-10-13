@@ -22,6 +22,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import Link from 'next/link';
+import { NalakathLogo } from '@/components/brand/NalakathLogo';
 
 export default function DriverPortalPage() {
   const router = useRouter();
@@ -79,13 +80,16 @@ export default function DriverPortalPage() {
     <div className="min-h-screen bg-slate-100 pb-12">
       {/* Mobile App Bar */}
       <header className="bg-slate-900 text-white sticky top-0 z-20 shadow-md">
-        <div className="max-w-md mx-auto px-4 py-3.5 flex items-center justify-between">
+        <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center font-bold text-sm">
-              FF
-            </div>
+            <NalakathLogo size="sm" variant="circle" />
             <div>
-              <div className="text-sm font-bold tracking-tight">Driver Portal</div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-black tracking-tight uppercase">NALAKATH</span>
+                <span className="text-[9px] font-bold text-rose-500 bg-rose-950/80 px-1 py-0.2 rounded border border-rose-800/80">
+                  1998
+                </span>
+              </div>
               <div className="text-[11px] text-slate-400 font-mono">
                 {profile?.full_name || 'Driver'} • {profile?.phone}
               </div>

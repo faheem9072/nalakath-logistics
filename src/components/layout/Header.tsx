@@ -6,6 +6,7 @@ import { dataRepo } from '@/lib/data-service';
 import { Profile } from '@/types/database';
 import { StatusBadge } from '@/components/ui/Badge';
 import { LogOut, ShieldCheck } from 'lucide-react';
+import { NalakathLogo } from '@/components/brand/NalakathLogo';
 
 export function Header() {
   const router = useRouter();
@@ -39,13 +40,24 @@ export function Header() {
   return (
     <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
       <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2.5 pr-4 border-r border-slate-200">
+          <NalakathLogo size="sm" variant="circle" />
+          <div className="hidden sm:block">
+            <span className="text-xs font-black tracking-tight text-slate-900 block leading-tight">
+              NALAKATH LOGISTICS
+            </span>
+            <span className="text-[10px] text-rose-600 font-semibold tracking-wider block">
+              ESTD. 1998
+            </span>
+          </div>
+        </div>
         <div className="flex items-center gap-2">
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-            Operational
+            Live Ops
           </span>
         </div>
-        <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-400 pl-4 border-l border-slate-200">
+        <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-400 pl-4 border-l border-slate-200">
           <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
           <span>RLS & Concurrency Enforced</span>
         </div>
