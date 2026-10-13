@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Modal } from '@/components/ui/Modal';
 import { dataRepo } from '@/lib/data-service';
 import {
   aggregateDriverReport,
@@ -27,6 +28,9 @@ import {
   MapPin,
   Building2,
   BarChart3,
+  Clock,
+  TrendingUp,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { NalakathLogo } from '@/components/brand/NalakathLogo';
 
@@ -40,6 +44,7 @@ export default function ReportsPage() {
   const [routeReport, setRouteReport] = useState<RouteReportItem[]>([]);
   const [teamReport, setTeamReport] = useState<TeamReportItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [selectedDriverAudit, setSelectedDriverAudit] = useState<DriverReportItem | null>(null);
 
   const generateReports = async (sDate?: string, eDate?: string) => {
     setIsLoading(true);
@@ -83,15 +88,17 @@ export default function ReportsPage() {
   const handleExportCSV = () => {
     const period = `${startDate}_to_${endDate}`;
     if (activeTab === 'driver') {
-      exportToCSV(`fleetflow_driver_report_${period}`, driverReport, {
+      exportToCSV(`nalakath_driver_report_${period}`, driverReport, {
         driverName: 'Driver Name',
         employeeCode: 'Employee Code',
         phone: 'Phone',
         assignedDutyDays: 'Assigned Duty Days',
-        confirmedAssignments: 'Confirmed Assignments',
+        totalDutyHours: 'Total Job Time (Hours)',
+        formattedDutyTime: 'Duty Hours (Formatted)',
+        averageDailyHours: 'Average Hours Per Day',
         completedTripsCount: 'Completed Trips',
         totalDistanceKm: 'Recorded Distance (km)',
-        vehiclesUsed: 'Vehicles Used',
+        vehiclesUsed: 'Vehicles Driven',
         routesOperated: 'Routes Operated',
         driverId: 'Driver ID',
         hasMissingOdometerTrips: 'Missing Odometer Notes',
@@ -269,7 +276,7 @@ export default function ReportsPage() {
               <BarChart3 className="w-4 h-4 text-blue-600" />
               <span>
                 {activeTab === 'driver'
-                  ? 'Top Drivers by Verified Distance (km)'
+                  ? 'Top Drivers by Job Hours & Verified Transit Distance'
                   : activeTab === 'vehicle'
                   ? 'Vehicle Utilization by Distance (km)'
                   : activeTab === 'route'
@@ -278,7 +285,7 @@ export default function ReportsPage() {
               </span>
             </h3>
             <span className="text-[11px] text-slate-400 font-mono">
-              Accurate Odometer Pair Measurement
+              Audited Time & Odometer Measurement
             </span>
           </div>
 
@@ -291,8 +298,16 @@ export default function ReportsPage() {
                 return (
                   <div key={d.driverId} className="space-y-1">
                     <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="text-slate-800 font-semibold">{d.driverName}</span>
-                      <span className="font-mono text-slate-600">{d.totalDistanceKm} km</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-800 font-semibold">{d.driverName}</span>
+                        <span className="text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded font-mono font-bold border border-blue-100 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          <span>{d.formattedDutyTime}</span>
+                        </span>
+                      </div>
+                      <span className="font-mono text-slate-600">
+                        {d.totalDistanceKm} km • {d.assignedDutyDays} duty days
+                      </span>
                     </div>
                     <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                       <div
@@ -395,43 +410,92 @@ export default function ReportsPage() {
                 <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                   <tr>
                     <th className="px-5 py-3.5">Driver</th>
-                    <th className="px-5 py-3.5">Code</th>
-                    <th className="px-5 py-3.5">Assigned Duty Days</th>
-                    <th className="px-5 py-3.5">Confirmed Duties</th>
-                    <th className="px-5 py-3.5">Completed Trips</th>
-                    <th className="px-5 py-3.5">Recorded Distance</th>
-                    <th className="px-5 py-3.5">Vehicles Used</th>
+                    <th className="px-5 py-3.5">Duty Days</th>
+                    <th className="px-5 py-3.5">Total Job Time (Hours)</th>
+                    <th className="px-5 py-3.5">Trips & Distance</th>
+                    <th className="px-5 py-3.5">Vehicles Driven (Breakdown)</th>
                     <th className="px-5 py-3.5">Routes Operated</th>
+                    <th className="px-5 py-3.5 text-right">Audit</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
                   {driverReport.map((row) => (
                     <tr key={row.driverId} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-4 font-semibold text-slate-900">{row.driverName}</td>
-                      <td className="px-5 py-4 font-mono text-xs">{row.employeeCode}</td>
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-slate-900">{row.driverName}</div>
+                        <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                          {row.employeeCode} • {row.phone}
+                        </div>
+                      </td>
                       <td className="px-5 py-4 font-mono font-bold text-slate-900">
-                        {row.assignedDutyDays} days
+                        <div>{row.assignedDutyDays} days</div>
+                        <div className="text-[10px] text-slate-500 font-normal">
+                          {row.confirmedAssignments} confirmed
+                        </div>
                       </td>
-                      <td className="px-5 py-4 font-mono text-xs">{row.confirmedAssignments}</td>
-                      <td className="px-5 py-4 font-mono text-xs font-semibold">
-                        {row.completedTripsCount} trips
-                      </td>
-                      <td className="px-5 py-4 font-mono font-bold text-emerald-600">
-                        {row.totalDistanceKm} km
-                        {row.hasMissingOdometerTrips && (
-                          <span
-                            className="ml-1 text-amber-500 text-[10px]"
-                            title="Some trips lacked complete odometer pair"
-                          >
-                            *
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          <span className="font-mono font-black text-slate-900 text-sm">
+                            {row.totalDutyHours} hrs
                           </span>
-                        )}
+                        </div>
+                        <div className="text-[11px] text-blue-700 font-semibold font-mono mt-0.5">
+                          {row.formattedDutyTime}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          Avg: {row.averageDailyHours} hrs/day
+                        </div>
                       </td>
-                      <td className="px-5 py-4 text-xs font-mono">
-                        {row.vehiclesUsed.length > 0 ? row.vehiclesUsed.join(', ') : '—'}
+                      <td className="px-5 py-4">
+                        <div className="font-mono font-bold text-emerald-600">
+                          {row.totalDistanceKm} km
+                          {row.hasMissingOdometerTrips && (
+                            <span
+                              className="ml-1 text-amber-500 text-[10px]"
+                              title="Some trips lacked complete odometer pair"
+                            >
+                              *
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 font-mono mt-0.5">
+                          {row.completedTripsCount} trips
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex flex-wrap gap-1.5 max-w-sm">
+                          {row.vehicleBreakdown.map((vb) => (
+                            <span
+                              key={vb.vehicleId}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-slate-100 text-slate-800 border border-slate-200"
+                              title={`${vb.makeModel}: ${vb.dutyDaysCount} duty days, ${vb.tripsCount} trips, ${vb.distanceKm} km`}
+                            >
+                              <Truck className="w-3 h-3 text-blue-600 shrink-0" />
+                              <span className="font-bold">{vb.registrationNumber}</span>
+                              <span className="text-slate-500 text-[10px]">
+                                ({vb.tripsCount} tr • {vb.distanceKm} km)
+                              </span>
+                            </span>
+                          ))}
+                          {row.vehicleBreakdown.length === 0 && (
+                            <span className="text-slate-400 text-xs">—</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-5 py-4 text-xs">
                         {row.routesOperated.length > 0 ? row.routesOperated.join(', ') : '—'}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs py-1"
+                          onClick={() => setSelectedDriverAudit(row)}
+                          leftIcon={<FileSpreadsheet className="w-3.5 h-3.5" />}
+                        >
+                          Details
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -566,6 +630,123 @@ export default function ReportsPage() {
           </div>
         </div>
       )}
+
+      {/* Driver Detailed Monthly Audit Modal */}
+      <Modal
+        isOpen={!!selectedDriverAudit}
+        onClose={() => setSelectedDriverAudit(null)}
+        title={`${selectedDriverAudit?.driverName || 'Driver'} — Monthly Duty & Vehicle Audit`}
+        description={`Audit period: ${startDate} to ${endDate} | Code: ${selectedDriverAudit?.employeeCode} | Mobile: ${selectedDriverAudit?.phone}`}
+        maxWidth="lg"
+      >
+        {selectedDriverAudit && (
+          <div className="space-y-5">
+            {/* 3 Metric Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-blue-50/70 p-3.5 rounded-xl border border-blue-100">
+                <div className="text-[11px] font-bold text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>Total Job Time</span>
+                </div>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">
+                  {selectedDriverAudit.totalDutyHours} <span className="text-xs font-normal text-slate-600">hrs</span>
+                </div>
+                <div className="text-xs text-blue-800 font-semibold mt-0.5 font-mono">
+                  {selectedDriverAudit.formattedDutyTime}
+                </div>
+              </div>
+
+              <div className="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-100">
+                <div className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>Duty Days Worked</span>
+                </div>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">
+                  {selectedDriverAudit.assignedDutyDays} <span className="text-xs font-normal text-slate-600">days</span>
+                </div>
+                <div className="text-xs text-emerald-800 font-semibold mt-0.5">
+                  Avg: {selectedDriverAudit.averageDailyHours} hrs / day
+                </div>
+              </div>
+
+              <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-100">
+                <div className="text-[11px] font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                  <span>Transit Distance</span>
+                </div>
+                <div className="text-2xl font-black text-slate-900 font-mono mt-1">
+                  {selectedDriverAudit.totalDistanceKm} <span className="text-xs font-normal text-slate-600">km</span>
+                </div>
+                <div className="text-xs text-purple-800 font-semibold mt-0.5 font-mono">
+                  {selectedDriverAudit.completedTripsCount} trips completed
+                </div>
+              </div>
+            </div>
+
+            {/* Vehicle-wise Deployment Table */}
+            <div>
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Truck className="w-4 h-4 text-blue-600" />
+                <span>Exact Vehicles Driven & Transit Mileage (Month-End Breakdown)</span>
+              </h4>
+
+              <div className="rounded-xl border border-slate-200 overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="px-4 py-2.5">Vehicle Registration</th>
+                      <th className="px-4 py-2.5">Make & Model</th>
+                      <th className="px-4 py-2.5">Days Deployed</th>
+                      <th className="px-4 py-2.5">Trips Completed</th>
+                      <th className="px-4 py-2.5">Distance Covered</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {selectedDriverAudit.vehicleBreakdown.map((vb) => (
+                      <tr key={vb.vehicleId} className="hover:bg-slate-50">
+                        <td className="px-4 py-2.5 font-mono font-bold text-slate-900">
+                          {vb.registrationNumber}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-600">{vb.makeModel || 'Commercial Vehicle'}</td>
+                        <td className="px-4 py-2.5 font-mono">{vb.dutyDaysCount} days</td>
+                        <td className="px-4 py-2.5 font-mono">{vb.tripsCount} trips</td>
+                        <td className="px-4 py-2.5 font-mono font-bold text-emerald-600">
+                          {vb.distanceKm} km
+                        </td>
+                      </tr>
+                    ))}
+                    {selectedDriverAudit.vehicleBreakdown.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                          No vehicle transit records for this period.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Routes Corridor Summary */}
+            <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80">
+              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                Corridors / Routes Operated
+              </span>
+              <div className="text-xs text-slate-800 font-medium">
+                {selectedDriverAudit.routesOperated.length > 0
+                  ? selectedDriverAudit.routesOperated.join(', ')
+                  : 'Flexible Daily Routes'}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <Button variant="outline" size="sm" onClick={() => setSelectedDriverAudit(null)}>
+                Close Audit View
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </PageContainer>
   );
 }

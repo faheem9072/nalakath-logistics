@@ -4,6 +4,7 @@ import {
   VehicleReportItem,
   RouteReportItem,
   TeamReportItem,
+  DriverVehicleUsage,
 } from '@/types/models';
 import { calculateTripDistance } from './odometer-calculator';
 
@@ -27,10 +28,28 @@ function isDateInRange(date: string, startDate?: string, endDate?: string): bool
   return true;
 }
 
+function parseTimeToMinutes(timeStr: string): number {
+  if (!timeStr) return 0;
+  const parts = timeStr.split(':');
+  const h = parseInt(parts[0], 10) || 0;
+  const m = parseInt(parts[1], 10) || 0;
+  return h * 60 + m;
+}
+
+function getShiftDurationMinutes(start: string, end: string): number {
+  const startM = parseTimeToMinutes(start);
+  const endM = parseTimeToMinutes(end);
+  if (endM >= startM) {
+    return endM - startM;
+  }
+  return 24 * 60 - startM + endM;
+}
+
 export function aggregateDriverReport(input: AggregateReportsInput): DriverReportItem[] {
   const { assignments, trips, drivers, vehicles, routes, startDate, endDate } = input;
 
   const vehiclesMap = new Map(vehicles.map((v) => [v.id, v.registration_number]));
+  const vehiclesObjMap = new Map(vehicles.map((v) => [v.id, v]));
   const routesMap = new Map(routes.map((r) => [r.id, r.code]));
 
   // Index trips by assignment_id
@@ -59,11 +78,24 @@ export function aggregateDriverReport(input: AggregateReportsInput): DriverRepor
   return drivers.map((driver) => {
     const driverAssignments = assignmentsByDriver.get(driver.id) || [];
 
-    // 1. Count distinct duty dates for assigned duty days
+    // 1. Count distinct duty dates and calculate duty shift hours
     const dutyDatesSet = new Set<string>();
     let confirmedCount = 0;
     const vehicleRegsSet = new Set<string>();
     const routeCodesSet = new Set<string>();
+    let totalDutyMinutes = 0;
+
+    const vehicleUsageMap = new Map<
+      string,
+      {
+        vehicleId: string;
+        registrationNumber: string;
+        makeModel: string;
+        tripsCount: number;
+        distanceKm: number;
+        dutyDates: Set<string>;
+      }
+    >();
 
     for (const a of driverAssignments) {
       dutyDatesSet.add(a.duty_date);
@@ -72,8 +104,29 @@ export function aggregateDriverReport(input: AggregateReportsInput): DriverRepor
         confirmedCount++;
       }
 
-      const vReg = vehiclesMap.get(a.vehicle_id);
+      // Calculate shift duration in minutes
+      const shiftM = getShiftDurationMinutes(a.planned_start_time, a.planned_end_time);
+      totalDutyMinutes += shiftM;
+
+      const vObj = vehiclesObjMap.get(a.vehicle_id);
+      const vReg = vObj?.registration_number || vehiclesMap.get(a.vehicle_id);
       if (vReg) vehicleRegsSet.add(vReg);
+
+      if (a.vehicle_id) {
+        let vEntry = vehicleUsageMap.get(a.vehicle_id);
+        if (!vEntry) {
+          vEntry = {
+            vehicleId: a.vehicle_id,
+            registrationNumber: vReg || 'Unknown',
+            makeModel: vObj?.make_model || '',
+            tripsCount: 0,
+            distanceKm: 0,
+            dutyDates: new Set<string>(),
+          };
+          vehicleUsageMap.set(a.vehicle_id, vEntry);
+        }
+        vEntry.dutyDates.add(a.duty_date);
+      }
 
       if (a.route_id) {
         const rCode = routesMap.get(a.route_id);
@@ -97,15 +150,41 @@ export function aggregateDriverReport(input: AggregateReportsInput): DriverRepor
             if (rCode) routeCodesSet.add(rCode);
           }
 
+          let tripDistance = 0;
           const dist = calculateTripDistance(trip.start_odometer, trip.end_odometer);
           if (dist.hasValidPair && dist.distanceKm !== null) {
             totalDistanceKm += dist.distanceKm;
+            tripDistance = dist.distanceKm;
           } else {
             hasMissingOdometerTrips = true;
+          }
+
+          const vEntry = vehicleUsageMap.get(a.vehicle_id);
+          if (vEntry) {
+            vEntry.tripsCount++;
+            vEntry.distanceKm += tripDistance;
           }
         }
       }
     }
+
+    const totalDutyHours = Number((totalDutyMinutes / 60).toFixed(1));
+    const h = Math.floor(totalDutyMinutes / 60);
+    const m = totalDutyMinutes % 60;
+    const formattedDutyTime = `${h}h ${m > 0 ? `${m}m` : '0m'}`;
+    const averageDailyHours =
+      dutyDatesSet.size > 0 ? Number((totalDutyHours / dutyDatesSet.size).toFixed(1)) : 0;
+
+    const vehicleBreakdown: DriverVehicleUsage[] = Array.from(vehicleUsageMap.values()).map(
+      (v) => ({
+        vehicleId: v.vehicleId,
+        registrationNumber: v.registrationNumber,
+        makeModel: v.makeModel,
+        tripsCount: v.tripsCount,
+        distanceKm: Number(v.distanceKm.toFixed(1)),
+        dutyDaysCount: v.dutyDates.size,
+      })
+    );
 
     return {
       driverId: driver.id,
@@ -119,6 +198,10 @@ export function aggregateDriverReport(input: AggregateReportsInput): DriverRepor
       completedTripsCount: completedTrips,
       totalDistanceKm: Number(totalDistanceKm.toFixed(2)),
       hasMissingOdometerTrips,
+      totalDutyHours,
+      formattedDutyTime,
+      averageDailyHours,
+      vehicleBreakdown,
     };
   });
 }

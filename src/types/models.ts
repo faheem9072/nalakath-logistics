@@ -36,6 +36,15 @@ export interface AssignmentEventWithDetails extends AssignmentEvent {
   new_vehicle?: Vehicle | null;
 }
 
+export interface DriverVehicleUsage {
+  vehicleId: string;
+  registrationNumber: string;
+  makeModel: string;
+  tripsCount: number;
+  distanceKm: number;
+  dutyDaysCount: number;
+}
+
 export interface DriverReportItem {
   driverId: string;
   driverName: string;
@@ -48,6 +57,10 @@ export interface DriverReportItem {
   completedTripsCount: number;
   totalDistanceKm: number;
   hasMissingOdometerTrips: boolean;
+  totalDutyHours: number; // in hours, e.g. 78.5
+  formattedDutyTime: string; // e.g. "78 hrs 30 mins"
+  averageDailyHours: number; // e.g. 6.5
+  vehicleBreakdown: DriverVehicleUsage[];
 }
 
 export interface VehicleReportItem {

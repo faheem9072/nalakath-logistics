@@ -181,6 +181,15 @@ describe('Report Aggregator', () => {
     expect(d.completedTripsCount).toBe(3);
     // Total distance = 30 + 25 + 45 = 100 km
     expect(d.totalDistanceKm).toBe(100);
+    // Total duty hours = 4h + 4h + 4h = 12h
+    expect(d.totalDutyHours).toBe(12);
+    expect(d.formattedDutyTime).toBe('12h 0m');
+    expect(d.averageDailyHours).toBe(6);
+    // Vehicle breakdown
+    expect(d.vehicleBreakdown).toHaveLength(1);
+    expect(d.vehicleBreakdown[0].registrationNumber).toBe('KL-07-CD-4101');
+    expect(d.vehicleBreakdown[0].tripsCount).toBe(3);
+    expect(d.vehicleBreakdown[0].distanceKm).toBe(100);
   });
 
   it('accurately aggregates vehicle deployments and distance', () => {
