@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  aside, header, nav, .print-hidden {
+    display: none !important;
+  }
+}
