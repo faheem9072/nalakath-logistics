@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { AssignmentCard } from '@/components/assignments/AssignmentCard';
 import { AssignmentFormModal } from '@/components/assignments/AssignmentFormModal';
+import { EditAssignmentModal } from '@/components/assignments/EditAssignmentModal';
 import { ReassignModal } from '@/components/assignments/ReassignModal';
 import { AssignmentEventTimeline } from '@/components/assignments/AssignmentEventTimeline';
 import { Button } from '@/components/ui/Button';
@@ -32,6 +33,7 @@ export default function AssignmentsPage() {
 
   // Modals
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<AssignmentWithDetails | null>(null);
   const [reassignTarget, setReassignTarget] = useState<AssignmentWithDetails | null>(null);
   const [eventsTarget, setEventsTarget] = useState<AssignmentWithDetails | null>(null);
 
@@ -204,6 +206,7 @@ export default function AssignmentsPage() {
             <AssignmentCard
               key={assignment.id}
               assignment={assignment}
+              onEdit={(a) => setEditTarget(a)}
               onReassign={(a) => setReassignTarget(a)}
               onViewEvents={(a) => setEventsTarget(a)}
             />
@@ -216,6 +219,18 @@ export default function AssignmentsPage() {
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onSuccess={loadData}
+        vehicles={vehicles}
+        drivers={drivers}
+        routes={routes}
+        teams={teams}
+      />
+
+      {/* Edit Duty Modal */}
+      <EditAssignmentModal
+        isOpen={!!editTarget}
+        onClose={() => setEditTarget(null)}
+        onSuccess={loadData}
+        assignment={editTarget}
         vehicles={vehicles}
         drivers={drivers}
         routes={routes}

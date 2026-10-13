@@ -11,7 +11,7 @@ import { Alert } from '@/components/ui/Alert';
 import { StatusBadge } from '@/components/ui/Badge';
 import { dataRepo } from '@/lib/data-service';
 import { Vehicle, VehicleType, VehicleStatus } from '@/types/database';
-import { Plus, Search, Truck } from 'lucide-react';
+import { Plus, Search, Truck, Pencil } from 'lucide-react';
 
 export default function VehiclesPage() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -19,7 +19,7 @@ export default function VehiclesPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal
+  // Add Modal
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [regNo, setRegNo] = useState('');
   const [makeModel, setMakeModel] = useState('');
@@ -29,6 +29,18 @@ export default function VehiclesPage() {
   const [notes, setNotes] = useState('');
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Edit Modal
+  const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [editRegNo, setEditRegNo] = useState('');
+  const [editMakeModel, setEditMakeModel] = useState('');
+  const [editVType, setEditVType] = useState<VehicleType>('bus');
+  const [editCapacity, setEditCapacity] = useState('32');
+  const [editOdometer, setEditOdometer] = useState('0');
+  const [editStatus, setEditStatus] = useState<VehicleStatus>('active');
+  const [editNotes, setEditNotes] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   const loadVehicles = async () => {
     setIsLoading(true);
@@ -45,6 +57,42 @@ export default function VehiclesPage() {
   useEffect(() => {
     loadVehicles();
   }, []);
+
+  const handleOpenEdit = (v: Vehicle) => {
+    setEditingVehicle(v);
+    setEditRegNo(v.registration_number);
+    setEditMakeModel(v.make_model);
+    setEditVType(v.vehicle_type);
+    setEditCapacity(v.capacity.toString());
+    setEditOdometer(v.current_odometer.toString());
+    setEditStatus(v.status);
+    setEditNotes(v.notes || '');
+    setEditError(null);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingVehicle) return;
+    setEditError(null);
+    setIsEditSubmitting(true);
+    try {
+      await dataRepo.updateVehicle(editingVehicle.id, {
+        registration_number: editRegNo.trim().toUpperCase(),
+        make_model: editMakeModel.trim(),
+        vehicle_type: editVType,
+        capacity: parseInt(editCapacity) || 20,
+        current_odometer: parseFloat(editOdometer) || 0,
+        status: editStatus,
+        notes: editNotes.trim() || null,
+      });
+      setEditingVehicle(null);
+      loadVehicles();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update vehicle');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,18 +239,29 @@ export default function VehiclesPage() {
                       <StatusBadge status={v.status} size="sm" />
                     </td>
                     <td className="px-5 py-4 text-right">
-                      <Button
-                        size="sm"
-                        variant={v.status === 'maintenance' ? 'success' : 'outline'}
-                        className="text-xs py-1"
-                        onClick={() => handleToggleStatus(v)}
-                      >
-                        {v.status === 'active'
-                          ? 'Set Maint.'
-                          : v.status === 'maintenance'
-                          ? 'Activate'
-                          : 'Restore'}
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs py-1"
+                          onClick={() => handleOpenEdit(v)}
+                          leftIcon={<Pencil className="w-3 h-3" />}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={v.status === 'maintenance' ? 'success' : 'outline'}
+                          className="text-xs py-1"
+                          onClick={() => handleToggleStatus(v)}
+                        >
+                          {v.status === 'active'
+                            ? 'Set Maint.'
+                            : v.status === 'maintenance'
+                            ? 'Activate'
+                            : 'Restore'}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -293,6 +352,106 @@ export default function VehiclesPage() {
             </Button>
             <Button type="submit" variant="primary" isLoading={isSubmitting}>
               Save Vehicle
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Vehicle Modal */}
+      <Modal
+        isOpen={!!editingVehicle}
+        onClose={() => setEditingVehicle(null)}
+        title="Edit Fleet Vehicle"
+        description="Update vehicle specifications, current odometer, status, and operational notes."
+        maxWidth="md"
+      >
+        <form onSubmit={handleUpdate} className="space-y-4">
+          {editError && <Alert variant="danger">{editError}</Alert>}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Registration Number"
+              placeholder="KL-07-CD-4103"
+              value={editRegNo}
+              onChange={(e) => setEditRegNo(e.target.value.toUpperCase())}
+              required
+            />
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                Vehicle Type
+              </label>
+              <Select
+                value={editVType}
+                onChange={(e) => setEditVType(e.target.value as VehicleType)}
+              >
+                <option value="bus">Bus</option>
+                <option value="mini_bus">Mini Bus</option>
+                <option value="van">Van</option>
+                <option value="truck">Truck</option>
+                <option value="car">Car</option>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Make & Model"
+              placeholder="Tata Starbus 32-Seater"
+              value={editMakeModel}
+              onChange={(e) => setEditMakeModel(e.target.value)}
+              required
+            />
+            <Input
+              label="Passenger / Cargo Capacity"
+              type="number"
+              value={editCapacity}
+              onChange={(e) => setEditCapacity(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Current Odometer (km)"
+              type="number"
+              step="0.1"
+              value={editOdometer}
+              onChange={(e) => setEditOdometer(e.target.value)}
+              required
+            />
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                Operational Status
+              </label>
+              <Select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value as VehicleStatus)}
+              >
+                <option value="active">Active (In Service)</option>
+                <option value="maintenance">Under Maintenance</option>
+                <option value="inactive">Inactive / Retired</option>
+              </Select>
+            </div>
+          </div>
+
+          <Input
+            label="Operational Notes"
+            placeholder="E.g., Allocated to airport branch..."
+            value={editNotes}
+            onChange={(e) => setEditNotes(e.target.value)}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingVehicle(null)}
+              disabled={isEditSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isEditSubmitting}>
+              Save Changes
             </Button>
           </div>
         </form>

@@ -11,7 +11,7 @@ import { Alert } from '@/components/ui/Alert';
 import { StatusBadge } from '@/components/ui/Badge';
 import { dataRepo } from '@/lib/data-service';
 import { Driver, DriverStatus, Route } from '@/types/database';
-import { Plus, Search, Users } from 'lucide-react';
+import { Plus, Search, Users, Pencil } from 'lucide-react';
 
 export default function DriversPage() {
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -20,7 +20,7 @@ export default function DriversPage() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal
+  // Add Modal
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [empCode, setEmpCode] = useState('');
   const [fullName, setFullName] = useState('');
@@ -32,6 +32,20 @@ export default function DriversPage() {
   const [notes, setNotes] = useState('');
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Edit Modal
+  const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
+  const [editEmpCode, setEditEmpCode] = useState('');
+  const [editFullName, setEditFullName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editLicenseNo, setEditLicenseNo] = useState('');
+  const [editLicenseExp, setEditLicenseExp] = useState('2028-12-31');
+  const [editIsFixedRoute, setEditIsFixedRoute] = useState(false);
+  const [editDefaultRouteId, setEditDefaultRouteId] = useState('');
+  const [editStatus, setEditStatus] = useState<DriverStatus>('active');
+  const [editNotes, setEditNotes] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -52,6 +66,46 @@ export default function DriversPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleOpenEdit = (d: Driver) => {
+    setEditingDriver(d);
+    setEditEmpCode(d.employee_code);
+    setEditFullName(d.full_name);
+    setEditPhone(d.phone);
+    setEditLicenseNo(d.license_number);
+    setEditLicenseExp(d.license_expiry);
+    setEditIsFixedRoute(d.is_fixed_route);
+    setEditDefaultRouteId(d.default_route_id || '');
+    setEditStatus(d.status);
+    setEditNotes(d.notes || '');
+    setEditError(null);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDriver) return;
+    setEditError(null);
+    setIsEditSubmitting(true);
+    try {
+      await dataRepo.updateDriver(editingDriver.id, {
+        employee_code: editEmpCode.trim().toUpperCase(),
+        full_name: editFullName.trim(),
+        phone: editPhone.trim(),
+        license_number: editLicenseNo.trim(),
+        license_expiry: editLicenseExp,
+        is_fixed_route: editIsFixedRoute,
+        default_route_id: editIsFixedRoute && editDefaultRouteId ? editDefaultRouteId : null,
+        status: editStatus,
+        notes: editNotes.trim() || null,
+      });
+      setEditingDriver(null);
+      loadData();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update driver');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -219,18 +273,29 @@ export default function DriversPage() {
                       <StatusBadge status={d.status} size="sm" />
                     </td>
                     <td className="px-5 py-4 text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs py-1"
-                        onClick={() => handleToggleStatus(d)}
-                      >
-                        {d.status === 'active'
-                          ? 'Set Leave'
-                          : d.status === 'on_leave'
-                          ? 'Deactivate'
-                          : 'Activate'}
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs py-1"
+                          onClick={() => handleOpenEdit(d)}
+                          leftIcon={<Pencil className="w-3 h-3" />}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs py-1"
+                          onClick={() => handleToggleStatus(d)}
+                        >
+                          {d.status === 'active'
+                            ? 'Set Leave'
+                            : d.status === 'on_leave'
+                            ? 'Deactivate'
+                            : 'Activate'}
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -344,6 +409,128 @@ export default function DriversPage() {
             </Button>
             <Button type="submit" variant="primary" isLoading={isSubmitting}>
               Register Driver
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Driver Modal */}
+      <Modal
+        isOpen={!!editingDriver}
+        onClose={() => setEditingDriver(null)}
+        title="Edit Transport Driver"
+        description="Update driver credentials, contact phone, license validity, and assigned corridor."
+        maxWidth="md"
+      >
+        <form onSubmit={handleUpdate} className="space-y-4">
+          {editError && <Alert variant="danger">{editError}</Alert>}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Employee Code"
+              placeholder="EMP-1001"
+              value={editEmpCode}
+              onChange={(e) => setEditEmpCode(e.target.value.toUpperCase())}
+              required
+            />
+            <Input
+              label="Full Name"
+              placeholder="Driver Full Name"
+              value={editFullName}
+              onChange={(e) => setEditFullName(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Mobile Number (Auth)"
+              placeholder="+919400112233"
+              value={editPhone}
+              onChange={(e) => setEditPhone(e.target.value)}
+              required
+            />
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                Duty Status
+              </label>
+              <Select
+                value={editStatus}
+                onChange={(e) => setEditStatus(e.target.value as DriverStatus)}
+              >
+                <option value="active">Active (On Roster)</option>
+                <option value="on_leave">On Leave</option>
+                <option value="inactive">Inactive</option>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Commercial License Number"
+              placeholder="KL0720180004123"
+              value={editLicenseNo}
+              onChange={(e) => setEditLicenseNo(e.target.value.toUpperCase())}
+              required
+            />
+            <Input
+              label="License Expiry Date"
+              type="date"
+              value={editLicenseExp}
+              onChange={(e) => setEditLicenseExp(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-3">
+            <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editIsFixedRoute}
+                onChange={(e) => setEditIsFixedRoute(e.target.checked)}
+                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
+              />
+              <span>Fixed-Route Driver (Regular assigned corridor)</span>
+            </label>
+
+            {editIsFixedRoute && (
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Default Route Corridor
+                </label>
+                <Select
+                  value={editDefaultRouteId}
+                  onChange={(e) => setEditDefaultRouteId(e.target.value)}
+                >
+                  <option value="">Select primary corridor...</option>
+                  {routes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.code} — {r.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+          </div>
+
+          <Input
+            label="Notes"
+            placeholder="E.g., Airport security clearance, night shifts only..."
+            value={editNotes}
+            onChange={(e) => setEditNotes(e.target.value)}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingDriver(null)}
+              disabled={isEditSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isEditSubmitting}>
+              Save Changes
             </Button>
           </div>
         </form>

@@ -9,13 +9,13 @@ import { Modal } from '@/components/ui/Modal';
 import { Alert } from '@/components/ui/Alert';
 import { dataRepo } from '@/lib/data-service';
 import { Team } from '@/types/database';
-import { Plus, Building2, Phone, User } from 'lucide-react';
+import { Plus, Building2, Phone, User, Pencil } from 'lucide-react';
 
 export default function TeamsPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Modal
+  // Add Modal
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [name, setName] = useState('');
   const [contactPerson, setContactPerson] = useState('');
@@ -23,6 +23,15 @@ export default function TeamsPage() {
   const [billingNotes, setBillingNotes] = useState('');
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Edit Modal
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editContactPerson, setEditContactPerson] = useState('');
+  const [editContactPhone, setEditContactPhone] = useState('');
+  const [editBillingNotes, setEditBillingNotes] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   const loadTeams = async () => {
     setIsLoading(true);
@@ -39,6 +48,36 @@ export default function TeamsPage() {
   useEffect(() => {
     loadTeams();
   }, []);
+
+  const handleOpenEdit = (t: Team) => {
+    setEditingTeam(t);
+    setEditName(t.name);
+    setEditContactPerson(t.contact_person || '');
+    setEditContactPhone(t.contact_phone || '');
+    setEditBillingNotes(t.billing_notes || '');
+    setEditError(null);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTeam) return;
+    setEditError(null);
+    setIsEditSubmitting(true);
+    try {
+      await dataRepo.updateTeam(editingTeam.id, {
+        name: editName.trim(),
+        contact_person: editContactPerson.trim() || null,
+        contact_phone: editContactPhone.trim() || null,
+        billing_notes: editBillingNotes.trim() || null,
+      });
+      setEditingTeam(null);
+      loadTeams();
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : 'Failed to update client');
+    } finally {
+      setIsEditSubmitting(false);
+    }
+  };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,12 +135,23 @@ export default function TeamsPage() {
             <Card key={t.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-5 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
-                    <Building2 className="w-5 h-5" />
+                  <div className="flex items-center gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center font-bold">
+                      <Building2 className="w-5 h-5" />
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                      Active Client
+                    </span>
                   </div>
-                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    Active Client
-                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs py-0.5 px-2 h-7"
+                    onClick={() => handleOpenEdit(t)}
+                    leftIcon={<Pencil className="w-3 h-3" />}
+                  >
+                    Edit
+                  </Button>
                 </div>
 
                 <div>
@@ -186,6 +236,64 @@ export default function TeamsPage() {
             </Button>
             <Button type="submit" variant="primary" isLoading={isSubmitting}>
               Save Client
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Edit Team Modal */}
+      <Modal
+        isOpen={!!editingTeam}
+        onClose={() => setEditingTeam(null)}
+        title="Edit Corporate Client / Team"
+        description="Update corporate client name, primary contact person, phone, and billing terms."
+        maxWidth="md"
+      >
+        <form onSubmit={handleUpdate} className="space-y-4">
+          {editError && <Alert variant="danger">{editError}</Alert>}
+
+          <Input
+            label="Client / Team Name"
+            placeholder="E.g., Metro Tech Campus"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            required
+            autoFocus
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Contact Person"
+              placeholder="Sunil Menon"
+              value={editContactPerson}
+              onChange={(e) => setEditContactPerson(e.target.value)}
+            />
+            <Input
+              label="Contact Phone"
+              placeholder="+919876543210"
+              value={editContactPhone}
+              onChange={(e) => setEditContactPhone(e.target.value)}
+            />
+          </div>
+
+          <Input
+            label="Billing & Operational Notes"
+            placeholder="E.g., Monthly invoice due 5th, AC buses required..."
+            value={editBillingNotes}
+            onChange={(e) => setEditBillingNotes(e.target.value)}
+          />
+
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEditingTeam(null)}
+              disabled={isEditSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" isLoading={isEditSubmitting}>
+              Save Changes
             </Button>
           </div>
         </form>

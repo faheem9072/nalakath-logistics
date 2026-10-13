@@ -199,11 +199,11 @@ export default function LoginPage() {
               <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
-                  onClick={() => quickFill('+919876543200', 'Owner')}
+                  onClick={() => quickFill('+919876543200', 'Shabeerali Nalakath (Owner)')}
                   className="p-2 text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg text-slate-700 font-medium text-center cursor-pointer transition-colors"
                 >
-                  <div className="font-bold text-slate-900">Owner</div>
-                  <div className="text-[10px] text-slate-500 truncate">+919876...00</div>
+                  <div className="font-bold text-slate-900 truncate">Shabeerali</div>
+                  <div className="text-[10px] text-slate-500 truncate">Owner (+919876..00)</div>
                 </button>
                 <button
                   type="button"

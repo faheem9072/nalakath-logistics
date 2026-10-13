@@ -14,16 +14,19 @@ import {
   CheckCircle2,
   History,
   AlertCircle,
+  Pencil,
 } from 'lucide-react';
 
 export interface AssignmentCardProps {
   assignment: AssignmentWithDetails;
+  onEdit?: (assignment: AssignmentWithDetails) => void;
   onReassign?: (assignment: AssignmentWithDetails) => void;
   onViewEvents?: (assignment: AssignmentWithDetails) => void;
 }
 
 export function AssignmentCard({
   assignment,
+  onEdit,
   onReassign,
   onViewEvents,
 }: AssignmentCardProps) {
@@ -148,6 +151,18 @@ export function AssignmentCard({
                 <History className="w-3.5 h-3.5" />
                 <span>Audit</span>
               </button>
+            )}
+
+            {onEdit && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onEdit(assignment)}
+                className="text-xs py-1"
+                leftIcon={<Pencil className="w-3 h-3" />}
+              >
+                Edit
+              </Button>
             )}
 
             {onReassign &&

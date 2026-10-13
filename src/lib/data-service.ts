@@ -5,6 +5,7 @@ import {
   Team,
   Route,
   Assignment,
+  AssignmentStatus,
   Trip,
   AssignmentEvent,
   AuditLog,
@@ -69,6 +70,14 @@ class DataRepository {
         if (savedDrivers) {
           this.drivers = JSON.parse(savedDrivers);
         }
+        const savedRoutes = localStorage.getItem('fleetflow_routes');
+        if (savedRoutes) {
+          this.routes = JSON.parse(savedRoutes);
+        }
+        const savedTeams = localStorage.getItem('fleetflow_teams');
+        if (savedTeams) {
+          this.teams = JSON.parse(savedTeams);
+        }
       } catch (err) {
         console.warn('Failed to load local storage state:', err);
       }
@@ -84,6 +93,8 @@ class DataRepository {
         localStorage.setItem('fleetflow_events', JSON.stringify(this.events));
         localStorage.setItem('fleetflow_vehicles', JSON.stringify(this.vehicles));
         localStorage.setItem('fleetflow_drivers', JSON.stringify(this.drivers));
+        localStorage.setItem('fleetflow_routes', JSON.stringify(this.routes));
+        localStorage.setItem('fleetflow_teams', JSON.stringify(this.teams));
       } catch (err) {
         console.warn('Failed to persist to local storage:', err);
       }
@@ -382,6 +393,82 @@ class DataRepository {
     return assign;
   }
 
+  async updateAssignment(
+    id: string,
+    updates: Partial<{
+      duty_date: string;
+      driver_id: string;
+      vehicle_id: string;
+      route_id: string | null;
+      team_id: string | null;
+      planned_start_time: string;
+      planned_end_time: string;
+      status: AssignmentStatus;
+      notes: string | null;
+    }>
+  ): Promise<Assignment> {
+    const assign = this.assignments.find((a) => a.id === id);
+    if (!assign) throw new Error('Assignment not found');
+
+    const nextDutyDate = updates.duty_date ?? assign.duty_date;
+    const nextStartTime = updates.planned_start_time ?? assign.planned_start_time;
+    const nextEndTime = updates.planned_end_time ?? assign.planned_end_time;
+    const nextDriverId = updates.driver_id ?? assign.driver_id;
+    const nextVehicleId = updates.vehicle_id ?? assign.vehicle_id;
+
+    // Check conflicts if schedule date/times, driver, or vehicle changed
+    if (
+      nextDutyDate !== assign.duty_date ||
+      nextStartTime !== assign.planned_start_time ||
+      nextEndTime !== assign.planned_end_time ||
+      nextDriverId !== assign.driver_id ||
+      nextVehicleId !== assign.vehicle_id
+    ) {
+      const driversMap = new Map(this.drivers.map((d) => [d.id, d]));
+      const vehiclesMap = new Map(this.vehicles.map((v) => [v.id, v]));
+
+      const conflict = checkScheduleConflicts(
+        {
+          assignmentId: assign.id,
+          dutyDate: nextDutyDate,
+          startTime: nextStartTime,
+          endTime: nextEndTime,
+          driverId: nextDriverId,
+          vehicleId: nextVehicleId,
+        },
+        this.assignments,
+        driversMap,
+        vehiclesMap
+      );
+
+      if (conflict.hasConflict) {
+        throw new Error(conflict.message || 'Schedule conflict detected during edit');
+      }
+    }
+
+    Object.assign(assign, updates, {
+      updated_by: this.currentUserId,
+      updated_at: new Date().toISOString(),
+    });
+
+    this.events.unshift({
+      id: `evt-${Date.now()}`,
+      assignment_id: assign.id,
+      event_type: 'edited',
+      performed_by: this.currentUserId,
+      previous_driver_id: null,
+      new_driver_id: assign.driver_id,
+      previous_vehicle_id: null,
+      new_vehicle_id: assign.vehicle_id,
+      reason: 'Assignment parameters modified by management',
+      metadata: { updates },
+      created_at: new Date().toISOString(),
+    });
+
+    this.persist();
+    return assign;
+  }
+
   async confirmDuty(assignmentId: string): Promise<Assignment> {
     const assign = this.assignments.find((a) => a.id === assignmentId);
     if (!assign) throw new Error('Assignment not found');
@@ -640,6 +727,14 @@ class DataRepository {
     return newTeam;
   }
 
+  async updateTeam(id: string, updates: Partial<Team>): Promise<Team> {
+    const t = this.teams.find((x) => x.id === id);
+    if (!t) throw new Error('Team not found');
+    Object.assign(t, updates, { updated_at: new Date().toISOString() });
+    this.persist();
+    return t;
+  }
+
   async getRoutes(): Promise<Route[]> {
     return [...this.routes];
   }
@@ -655,6 +750,17 @@ class DataRepository {
     this.routes.push(newRoute);
     this.persist();
     return newRoute;
+  }
+
+  async updateRoute(id: string, updates: Partial<Route>): Promise<Route> {
+    const r = this.routes.find((x) => x.id === id);
+    if (!r) throw new Error('Route not found');
+    if (updates.code) {
+      updates.code = updates.code.toUpperCase();
+    }
+    Object.assign(r, updates, { updated_at: new Date().toISOString() });
+    this.persist();
+    return r;
   }
 
   async getTripsWithDetails(): Promise<TripWithDetails[]> {

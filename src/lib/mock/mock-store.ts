@@ -14,7 +14,7 @@ export const INITIAL_PROFILES: Profile[] = [
   {
     id: '00000000-0000-0000-0000-000000000001',
     phone: '+919876543200',
-    full_name: 'Haris Nalakath (Fleet Director)',
+    full_name: 'Shabeerali Nalakath (Owner & Managing Director)',
     role: 'owner',
     is_active: true,
     created_at: '2026-10-01T00:00:00Z',
