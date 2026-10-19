@@ -13,10 +13,10 @@ import { NalakathLogo } from '@/components/brand/NalakathLogo';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [loginRole, setLoginRole] = useState<'driver' | 'owner'>('driver');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
-  const [phone, setPhone] = useState('+919400112233'); // default to driver Rajesh
+  const [phone, setPhone] = useState(''); // empty so driver enters their own number
   const [otp, setOtp] = useState('123456');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -250,69 +250,45 @@ export default function LoginPage() {
               </form>
             )}
 
-            {/* Quick Demo 1-Click Fillers */}
+            {/* Role Notice / Admin helper */}
             <div className="pt-3 border-t border-slate-100 space-y-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">
-                {t('demoLoginTitle')}
-              </span>
-
               {loginRole === 'driver' ? (
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => handleDirectDriverLogin('+919400112233')}
-                    className="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="font-bold text-emerald-900 text-xs">Refnise (Ad-hoc)</div>
-                    <div className="text-[10px] text-slate-500 font-mono">+919400112233</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDirectDriverLogin('+919400223344')}
-                    className="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="font-bold text-emerald-900 text-xs">Haneefa (Ad-hoc)</div>
-                    <div className="text-[10px] text-slate-500 font-mono">+919400223344</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDirectDriverLogin('+919400334455')}
-                    className="p-2.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="font-bold text-emerald-900 text-xs">Firoz (Delhivery)</div>
-                    <div className="text-[10px] text-slate-500 font-mono">+919400334455</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleDirectDriverLogin('+919400778899')}
-                    className="p-2.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="font-bold text-amber-900 text-xs">Ashin (Shadowfax)</div>
-                    <div className="text-[10px] text-slate-500 font-mono">+919400778899</div>
-                  </button>
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center space-y-1">
+                  <p className="text-xs text-slate-800 font-bold">
+                    {lang === 'ml'
+                      ? 'സുരക്ഷിതമായ ഡ്രൈവർ പ്രവേശനം'
+                      : 'Secure Driver Portal Access'}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {lang === 'ml'
+                      ? 'ഓരോ ഡ്രൈവർക്കും സ്വന്തം മൊബൈൽ നമ്പർ ഉപയോഗിച്ച് മാത്രമേ ലോഗിൻ ചെയ്ത് പഞ്ച് ചെയ്യാൻ സാധിക്കൂ.'
+                      : 'Each driver must sign in using their own registered mobile phone number.'}
+                  </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => handleDirectDriverLogin('+919876543200')}
-                    className="p-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="font-bold text-blue-900 text-xs">Shabeerali (Owner)</div>
-                    <div className="text-[10px] text-slate-500 font-mono">+919876543200</div>
-                  </button>
+                <div>
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center mb-1.5">
+                    {t('demoLoginTitle')}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => handleDirectDriverLogin('+919876543200')}
+                      className="p-2.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
+                    >
+                      <div className="font-bold text-blue-900 text-xs">Shabeerali (Owner)</div>
+                      <div className="text-[10px] text-slate-500 font-mono">+919876543200</div>
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDirectDriverLogin('+919876543201')}
-                    className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
-                  >
-                    <div className="font-bold text-slate-900 text-xs">Dispatcher</div>
-                    <div className="text-[10px] text-slate-500 font-mono">+919876543201</div>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDirectDriverLogin('+919876543201')}
+                      className="p-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
+                    >
+                      <div className="font-bold text-slate-900 text-xs">Dispatcher</div>
+                      <div className="text-[10px] text-slate-500 font-mono">+919876543201</div>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

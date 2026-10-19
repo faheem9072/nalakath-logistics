@@ -4,6 +4,8 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
 
+import { NalakathLogo } from '@/components/brand/NalakathLogo';
+
 export default function RootPage() {
   const router = useRouter();
 
@@ -20,12 +22,10 @@ export default function RootPage() {
   }, [router]);
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
       <div className="text-center space-y-3">
-        <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-lg mx-auto animate-pulse">
-          FF
-        </div>
-        <p className="text-sm font-medium text-slate-600">Loading FleetFlow...</p>
+        <NalakathLogo size="md" variant="circle" />
+        <p className="text-xs font-bold text-slate-400 animate-pulse">Loading Nalakath Logistics...</p>
       </div>
     </div>
   );

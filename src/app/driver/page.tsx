@@ -46,7 +46,6 @@ export default function DriverPortalPage() {
   const { lang, t } = useLanguage();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [driverRecord, setDriverRecord] = useState<Driver | null>(null);
-  const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   const [assignments, setAssignments] = useState<AssignmentWithDetails[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [driverExpenses, setDriverExpenses] = useState<ExpenseWithDetails[]>([]);
@@ -54,6 +53,11 @@ export default function DriverPortalPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [formattedToday, setFormattedToday] = useState<string>('');
+
+  // Driver Login form states
+  const [loginPhone, setLoginPhone] = useState<string>('');
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   // Modals state
   const [startTripModalDuty, setStartTripModalDuty] = useState<AssignmentWithDetails | null>(null);
@@ -87,44 +91,84 @@ export default function DriverPortalPage() {
       const vList = await dataRepo.getVehicles();
       setVehicles(vList);
 
-      const allDrivers = await dataRepo.getDrivers();
-      setAvailableDrivers(allDrivers);
-
-      let dRec = allDrivers.find(
-        (d) =>
-          (p && d.phone.replace(/[\s-]/g, '') === p.phone.replace(/[\s-]/g, '')) ||
-          (p && d.profile_id === p.id)
-      );
-
-      // If current user is owner or has no driver record, default to Refnise or first active driver
-      if (!dRec && allDrivers.length > 0) {
-        dRec = allDrivers.find((d) => d.full_name.toLowerCase().includes('refnise')) || allDrivers[0];
+      // Security check: Only allow authenticated driver profile
+      if (!p || p.role !== 'driver') {
+        setDriverRecord(null);
+        setAssignments([]);
+        setDriverExpenses([]);
+        setIsLoading(false);
+        return;
       }
 
-      setDriverRecord(dRec || null);
+      const allDrivers = await dataRepo.getDrivers();
+      const dRec = allDrivers.find(
+        (d) =>
+          d.phone.replace(/[\s-]/g, '') === p.phone.replace(/[\s-]/g, '') ||
+          d.profile_id === p.id
+      );
 
-      if (dRec) {
-        // Fetch driver duties using this driver's phone
-        const list = await dataRepo.getDriverAssignments(dRec.phone);
-        setAssignments(list);
+      if (!dRec) {
+        setDriverRecord(null);
+        setAssignments([]);
+        setDriverExpenses([]);
+        setActionError('This phone number is not linked to an active driver profile.');
+        setIsLoading(false);
+        return;
+      }
 
-        // Fetch driver's OWN expenses only
-        const expList = await dataRepo.getDriverExpenses(dRec.phone);
-        setDriverExpenses(expList);
+      setDriverRecord(dRec);
 
-        // Pre-select vehicle for expense
-        if (list.length > 0 && list[0].vehicle_id) {
-          setExpenseVehicleId(list[0].vehicle_id);
-          setSelectedAdhocVehicleId(list[0].vehicle_id);
-        } else if (vList.length > 0) {
-          setExpenseVehicleId(vList[0].id);
-          setSelectedAdhocVehicleId(vList[0].id);
-        }
+      // Fetch driver duties strictly for this authenticated driver
+      const list = await dataRepo.getDriverAssignments(dRec.phone);
+      setAssignments(list);
+
+      // Fetch driver's OWN expenses only
+      const expList = await dataRepo.getDriverExpenses(dRec.phone);
+      setDriverExpenses(expList);
+
+      // Pre-select vehicle for expense
+      if (list.length > 0 && list[0].vehicle_id) {
+        setExpenseVehicleId(list[0].vehicle_id);
+        setSelectedAdhocVehicleId(list[0].vehicle_id);
+      } else if (vList.length > 0) {
+        setExpenseVehicleId(vList[0].id);
+        setSelectedAdhocVehicleId(vList[0].id);
       }
     } catch (err) {
       console.error('Failed to load driver portal data:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDriverLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    let cleaned = loginPhone.replace(/[\s-]/g, '');
+    if (cleaned.length === 10 && !cleaned.startsWith('+')) {
+      cleaned = `+91${cleaned}`;
+    }
+    if (!cleaned.match(/^\+?[1-9]\d{9,14}$/)) {
+      setLoginError(
+        lang === 'ml'
+          ? 'ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക'
+          : 'Please enter a valid 10-digit mobile number'
+      );
+      return;
+    }
+    setIsLoggingIn(true);
+    try {
+      await dataRepo.loginByPhone(cleaned, '123456');
+      setLoginPhone('');
+      await loadData();
+    } catch (err: unknown) {
+      setLoginError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to sign in. Please verify your registered driver mobile number.'
+      );
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -220,6 +264,115 @@ export default function DriverPortalPage() {
   const totalMyExpenses = driverExpenses.reduce((sum, e) => sum + e.amount, 0);
   const isAdhocDriver = driverRecord ? !driverRecord.is_fixed_route : false;
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="text-center space-y-3">
+          <NalakathLogo size="md" variant="circle" />
+          <p className="text-xs font-bold text-slate-400 animate-pulse">Loading Nalakath Driver Portal...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If no driver is authenticated, show the Driver Mobile Login screen
+  if (!driverRecord) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex flex-col justify-center px-4 py-8">
+        <div className="max-w-md w-full mx-auto space-y-4">
+          <div className="flex items-center justify-between mb-2">
+            <Link
+              href="/dashboard"
+              className="text-xs font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1"
+            >
+              ← {lang === 'ml' ? 'ഓണർ ഡാഷ്‌ബോർഡ്' : 'Owner Dashboard'}
+            </Link>
+            <LanguageSwitcher />
+          </div>
+
+          <div className="text-center flex flex-col items-center">
+            <div className="p-2 bg-black rounded-full shadow-lg border border-slate-800 mb-2">
+              <NalakathLogo size="md" variant="circle" />
+            </div>
+            <h1 className="text-lg font-black tracking-tight text-slate-900 uppercase">
+              NALAKATH LOGISTICS
+            </h1>
+            <p className="text-[10px] text-rose-600 font-bold uppercase tracking-wider">
+              {lang === 'ml' ? 'ഡ്രൈവർ മൊബൈൽ പഞ്ച് പോർട്ടൽ' : 'Driver Mobile Punch Portal'}
+            </p>
+          </div>
+
+          <Card className="border-2 border-slate-200 shadow-md bg-white rounded-2xl overflow-hidden">
+            <div className="bg-slate-900 text-white p-4 text-center space-y-1">
+              <h2 className="text-sm font-black uppercase tracking-wider">
+                {lang === 'ml' ? 'ഡ്രൈവർ ലോഗിൻ' : 'Driver Mobile Sign In'}
+              </h2>
+              <p className="text-xs text-slate-300">
+                {lang === 'ml'
+                  ? 'വണ്ടിയിൽ കയറി പഞ്ച് ചെയ്യാൻ നിങ്ങളുടെ മൊബൈൽ നമ്പർ നൽകുക.'
+                  : 'Enter your registered 10-digit mobile number to punch in your trips.'}
+              </p>
+            </div>
+
+            <CardContent className="p-5 space-y-4">
+              {loginError && <Alert variant="danger">{loginError}</Alert>}
+
+              <form onSubmit={handleDriverLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {lang === 'ml' ? 'മൊബൈൽ നമ്പർ' : 'Mobile Phone Number'}
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      placeholder="9400112233"
+                      value={loginPhone}
+                      onChange={(e) => setLoginPhone(e.target.value)}
+                      required
+                      autoFocus
+                      className="w-full text-lg font-mono font-bold tracking-wider py-3 px-3.5 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-600 text-slate-900"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {lang === 'ml'
+                      ? 'രജിസ്റ്റർ ചെയ്ത 10 അക്ക മൊബൈൽ നമ്പർ നൽകി പ്രവേശിക്കുക.'
+                      : 'Enter your 10-digit registered mobile number to open your punch screen.'}
+                  </p>
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  isLoading={isLoggingIn}
+                  className="w-full py-3.5 text-base font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md min-h-[48px] cursor-pointer"
+                >
+                  {lang === 'ml' ? '👉 ലോഗിൻ ചെയ്യുക (Sign In & Punch)' : '👉 Sign In to Punch Portal'}
+                </Button>
+              </form>
+
+              <div className="pt-3 border-t border-slate-100 text-center space-y-1.5">
+                <p className="text-[11px] text-slate-500">
+                  {lang === 'ml'
+                    ? 'ഓരോ ഡ്രൈവർക്കും സ്വന്തം നമ്പറിൽ മാത്രമേ പഞ്ച് ചെയ്യാൻ സാധിക്കൂ.'
+                    : 'Each driver can only access and punch under their own registered number.'}
+                </p>
+                <a
+                  href="tel:+919876543200"
+                  className="text-xs font-bold text-slate-600 hover:text-slate-900 inline-flex items-center gap-1.5"
+                >
+                  <Phone className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>{lang === 'ml' ? 'ഹെൽപ്പ്‌ലൈൻ: 9876543200 (ഷബീറലി)' : 'Helpline: 9876543200 (Shabeerali)'}</span>
+                </a>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-100 pb-16">
       {/* Mobile App Bar */}
@@ -235,31 +388,12 @@ export default function DriverPortalPage() {
                 </span>
               </div>
               <div className="flex items-center gap-1.5 mt-0.5">
-                <select
-                  value={driverRecord?.id || ''}
-                  onChange={async (e) => {
-                    const chosen = availableDrivers.find((d) => d.id === e.target.value);
-                    if (chosen) {
-                      setDriverRecord(chosen);
-                      const list = await dataRepo.getDriverAssignments(chosen.phone);
-                      setAssignments(list);
-                      const expList = await dataRepo.getDriverExpenses(chosen.phone);
-                      setDriverExpenses(expList);
-                      if (list.length > 0 && list[0].vehicle_id) {
-                        setExpenseVehicleId(list[0].vehicle_id);
-                        setSelectedAdhocVehicleId(list[0].vehicle_id);
-                      }
-                    }
-                  }}
-                  className="bg-slate-800 text-slate-100 text-[11px] font-bold rounded px-1 py-0.5 border border-slate-700 cursor-pointer max-w-[125px] truncate focus:outline-none"
-                  title="Switch Driver"
-                >
-                  {availableDrivers.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.full_name}
-                    </option>
-                  ))}
-                </select>
+                <span className="text-xs font-black text-white truncate max-w-[130px]">
+                  {driverRecord.full_name}
+                </span>
+                <span className="text-[10px] text-emerald-400 font-mono font-bold">
+                  ({driverRecord.phone.slice(-4)})
+                </span>
                 {isAdhocDriver && (
                   <span className="text-[9px] bg-blue-900 text-blue-200 px-1.5 py-0.2 rounded font-bold">
                     Ad-hoc
@@ -277,12 +411,16 @@ export default function DriverPortalPage() {
             <button
               onClick={async () => {
                 await dataRepo.logout();
-                router.push('/login');
+                setDriverRecord(null);
+                setProfile(null);
+                setAssignments([]);
+                setDriverExpenses([]);
               }}
               title={t('logout')}
-              className="p-1.5 text-slate-400 hover:text-rose-400 cursor-pointer rounded-lg hover:bg-slate-800 transition-colors"
+              className="px-2 py-1 text-rose-300 hover:text-rose-100 bg-rose-950/60 hover:bg-rose-900 border border-rose-800/60 cursor-pointer rounded-lg transition-colors flex items-center gap-1 text-xs font-bold"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-3.5 h-3.5" />
+              <span>{t('logout')}</span>
             </button>
           </div>
         </div>
