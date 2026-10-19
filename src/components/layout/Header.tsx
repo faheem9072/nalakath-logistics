@@ -9,7 +9,6 @@ import { StatusBadge } from '@/components/ui/Badge';
 import { LogOut, Smartphone } from 'lucide-react';
 import { NalakathLogo } from '@/components/brand/NalakathLogo';
 import { LanguageSwitcher, useLanguage } from '@/lib/i18n/LanguageContext';
-import { InstallPwaButton } from '@/components/layout/InstallPwaButton';
 
 export function Header() {
   const router = useRouter();
@@ -65,9 +64,6 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-        {/* PWA Install Button */}
-        <InstallPwaButton />
-
         {/* Language Switcher (Always visible on mobile & desktop) */}
         <LanguageSwitcher />
 

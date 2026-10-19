@@ -18,8 +18,14 @@ export const metadata: Metadata = {
     'Official Fleet Management & Duty Operations Platform for Nalakath Logistics (Since 1998). Vehicle dispatch, duty scheduling, driver trips, and live odometer tracking.',
   manifest: '/manifest.json',
   icons: {
-    icon: '/nalakath-logo.svg',
-    apple: '/nalakath-logo.svg',
+    icon: [
+      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/nalakath-logo.svg', type: 'image/svg+xml' },
+    ],
+    apple: [
+      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
+    ],
   },
   themeColor: '#0f172a',
   appleWebApp: {
