@@ -16,6 +16,7 @@ export default function LoginPage() {
   const { t, lang } = useLanguage();
   const [loginRole, setLoginRole] = useState<'driver' | 'owner'>('driver');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
+  const [driverName, setDriverName] = useState('');
   const [phone, setPhone] = useState(''); // empty so driver enters their own number
   const [otp, setOtp] = useState('123456');
   const [isLoading, setIsLoading] = useState(false);
@@ -29,7 +30,8 @@ export default function LoginPage() {
     setError(null);
     setInfoMessage(null);
     if (role === 'driver') {
-      setPhone('+919400112233');
+      setDriverName('');
+      setPhone('');
     } else {
       setPhone('+919876543200');
     }
@@ -70,18 +72,33 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      // In demo mode, sign in directly or proceed to OTP
-      const profile = await dataRepo.loginByPhone(cleaned, '123456');
-      if (profile.role === 'driver') {
+      if (loginRole === 'driver') {
+        const dName = driverName.trim();
+        if (!dName) {
+          setError(
+            lang === 'ml'
+              ? 'ഡ്രൈവറുടെ പേര് നൽകുക (ഓണർ ചേർത്ത പേര്)'
+              : 'Please enter driver name as registered in owner dashboard'
+          );
+          setIsLoading(false);
+          return;
+        }
+        await dataRepo.loginDriverByNameAndPhone(dName, cleaned);
         router.push('/driver');
       } else {
+        const profile = await dataRepo.loginByPhone(cleaned, '123456');
         router.push('/dashboard');
       }
     } catch (err: unknown) {
-      // If error, show OTP step
-      setStep('otp');
-      setInfoMessage(`Code sent to: ${cleaned} (Demo code: 123456)`);
-      setIsLoading(false);
+      if (loginRole === 'driver') {
+        setError(err instanceof Error ? err.message : 'Sign in failed');
+        setIsLoading(false);
+      } else {
+        // If error, show OTP step
+        setStep('otp');
+        setInfoMessage(`Code sent to: ${cleaned} (Demo code: 123456)`);
+        setIsLoading(false);
+      }
     }
   };
 
@@ -179,9 +196,27 @@ export default function LoginPage() {
 
             {step === 'phone' ? (
               <form onSubmit={handleSendOtp} className="space-y-4">
+                {loginRole === 'driver' && (
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                      {t('driverNameInputLabel')} <span className="text-rose-500">*</span>
+                    </label>
+                    <Input
+                      placeholder={t('driverNameInputPlaceholder')}
+                      value={driverName}
+                      onChange={(e) => setDriverName(e.target.value)}
+                      required
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {t('driverNameHelper')}
+                    </p>
+                  </div>
+                )}
+
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {t('phoneLabel')}
+                    {t('phoneLabel')} <span className="text-rose-500">*</span>
                   </label>
                   <Input
                     type="tel"
@@ -190,7 +225,7 @@ export default function LoginPage() {
                     onChange={(e) => setPhone(e.target.value)}
                     leftIcon={<Phone className="w-4 h-4 text-slate-400" />}
                     required
-                    autoFocus
+                    autoFocus={loginRole !== 'driver'}
                   />
                   <p className="text-[11px] text-slate-500 mt-1">
                     {t('phoneHelper')}
@@ -261,8 +296,8 @@ export default function LoginPage() {
                   </p>
                   <p className="text-[11px] text-slate-500">
                     {lang === 'ml'
-                      ? 'ഓരോ ഡ്രൈവർക്കും സ്വന്തം മൊബൈൽ നമ്പർ ഉപയോഗിച്ച് മാത്രമേ ലോഗിൻ ചെയ്ത് പഞ്ച് ചെയ്യാൻ സാധിക്കൂ.'
-                      : 'Each driver must sign in using their own registered mobile phone number.'}
+                      ? 'ഓണർ ഡാഷ്‌ബോർഡിൽ നൽകിയ ഡ്രൈവറുടെ പേരും മൊബൈൽ നമ്പറും നൽകി ലോഗിൻ ചെയ്ത് പഞ്ച് ചെയ്യുക.'
+                      : 'Each driver must sign in using their registered driver name and mobile phone number.'}
                   </p>
                 </div>
               ) : (

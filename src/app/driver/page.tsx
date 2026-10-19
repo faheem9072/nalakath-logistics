@@ -54,7 +54,8 @@ export default function DriverPortalPage() {
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [formattedToday, setFormattedToday] = useState<string>('');
 
-  // Driver Login form states
+  // Driver Login form states (strictly requires both Name and Phone matching owner registry)
+  const [driverName, setDriverName] = useState<string>('');
   const [loginPhone, setLoginPhone] = useState<string>('');
   const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -144,6 +145,17 @@ export default function DriverPortalPage() {
   const handleDriverLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError(null);
+
+    const name = driverName.trim();
+    if (!name) {
+      setLoginError(
+        lang === 'ml'
+          ? 'ഡ്രൈവറുടെ പേര് നൽകുക (ഓണർ ഡാഷ്‌ബോർഡിൽ നൽകിയ അതേ പേര്)'
+          : 'Please enter your driver name registered by the owner'
+      );
+      return;
+    }
+
     let cleaned = loginPhone.replace(/[\s-]/g, '');
     if (cleaned.length === 10 && !cleaned.startsWith('+')) {
       cleaned = `+91${cleaned}`;
@@ -156,16 +168,18 @@ export default function DriverPortalPage() {
       );
       return;
     }
+
     setIsLoggingIn(true);
     try {
-      await dataRepo.loginByPhone(cleaned, '123456');
+      await dataRepo.loginDriverByNameAndPhone(name, cleaned);
+      setDriverName('');
       setLoginPhone('');
       await loadData();
     } catch (err: unknown) {
       setLoginError(
         err instanceof Error
           ? err.message
-          : 'Failed to sign in. Please verify your registered driver mobile number.'
+          : 'Failed to sign in. Please verify your driver name and mobile number.'
       );
     } finally {
       setIsLoggingIn(false);
@@ -305,12 +319,12 @@ export default function DriverPortalPage() {
           <Card className="border-2 border-slate-200 shadow-md bg-white rounded-2xl overflow-hidden">
             <div className="bg-slate-900 text-white p-4 text-center space-y-1">
               <h2 className="text-sm font-black uppercase tracking-wider">
-                {lang === 'ml' ? 'ഡ്രൈവർ ലോഗിൻ' : 'Driver Mobile Sign In'}
+                {lang === 'ml' ? 'ഡ്രൈവർ ലോഗിൻ & പഞ്ച്' : 'Driver Mobile Sign In'}
               </h2>
               <p className="text-xs text-slate-300">
                 {lang === 'ml'
-                  ? 'വണ്ടിയിൽ കയറി പഞ്ച് ചെയ്യാൻ നിങ്ങളുടെ മൊബൈൽ നമ്പർ നൽകുക.'
-                  : 'Enter your registered 10-digit mobile number to punch in your trips.'}
+                  ? 'ഓണർ ഡാഷ്‌ബോർഡിൽ നൽകിയിട്ടുള്ള ഡ്രൈവറുടെ പേരും മൊബൈൽ നമ്പറും നൽകുക.'
+                  : 'Enter your driver name and mobile number registered by the fleet owner.'}
               </p>
             </div>
 
@@ -318,9 +332,35 @@ export default function DriverPortalPage() {
               {loginError && <Alert variant="danger">{loginError}</Alert>}
 
               <form onSubmit={handleDriverLogin} className="space-y-4">
+                {/* Driver Name Input */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                    {lang === 'ml' ? 'മൊബൈൽ നമ്പർ' : 'Mobile Phone Number'}
+                    {lang === 'ml' ? 'ഡ്രൈവറുടെ പേര് (Driver Name)' : 'Driver Full Name'}{' '}
+                    <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      placeholder={lang === 'ml' ? 'ഉദാ: Refnise / Haneefa / Firoz' : 'e.g., Refnise / Haneefa / Firoz'}
+                      value={driverName}
+                      onChange={(e) => setDriverName(e.target.value)}
+                      required
+                      autoFocus
+                      className="w-full text-base font-bold tracking-wide py-3 px-3.5 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-600 text-slate-900 placeholder:text-slate-400 placeholder:font-normal"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    {lang === 'ml'
+                      ? 'ഓണർ ഡാഷ്‌ബോർഡിൽ ചേർത്ത അതേ പേര് നൽകുക.'
+                      : 'Enter the exact name registered in the owner dashboard.'}
+                  </p>
+                </div>
+
+                {/* Mobile Number Input */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                    {lang === 'ml' ? 'മൊബൈൽ നമ്പർ (Mobile Number)' : 'Mobile Phone Number'}{' '}
+                    <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <input
@@ -330,14 +370,13 @@ export default function DriverPortalPage() {
                       value={loginPhone}
                       onChange={(e) => setLoginPhone(e.target.value)}
                       required
-                      autoFocus
                       className="w-full text-lg font-mono font-bold tracking-wider py-3 px-3.5 bg-slate-50 border-2 border-slate-300 rounded-xl focus:outline-none focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-600 text-slate-900"
                     />
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">
                     {lang === 'ml'
-                      ? 'രജിസ്റ്റർ ചെയ്ത 10 അക്ക മൊബൈൽ നമ്പർ നൽകി പ്രവേശിക്കുക.'
-                      : 'Enter your 10-digit registered mobile number to open your punch screen.'}
+                      ? 'രജിസ്റ്റർ ചെയ്ത 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക.'
+                      : 'Enter your 10-digit registered mobile number.'}
                   </p>
                 </div>
 
@@ -348,15 +387,15 @@ export default function DriverPortalPage() {
                   isLoading={isLoggingIn}
                   className="w-full py-3.5 text-base font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md min-h-[48px] cursor-pointer"
                 >
-                  {lang === 'ml' ? '👉 ലോഗിൻ ചെയ്യുക (Sign In & Punch)' : '👉 Sign In to Punch Portal'}
+                  {lang === 'ml' ? '👉 ലോഗിൻ ചെയ്തു പഞ്ച് ചെയ്യുക' : '👉 Sign In & Start Punching'}
                 </Button>
               </form>
 
               <div className="pt-3 border-t border-slate-100 text-center space-y-1.5">
                 <p className="text-[11px] text-slate-500">
                   {lang === 'ml'
-                    ? 'ഓരോ ഡ്രൈവർക്കും സ്വന്തം നമ്പറിൽ മാത്രമേ പഞ്ച് ചെയ്യാൻ സാധിക്കൂ.'
-                    : 'Each driver can only access and punch under their own registered number.'}
+                    ? 'ഓരോ ഡ്രൈവർക്കും സ്വന്തം പേരും നമ്പറും നൽകി മാത്രമേ ലോഗിൻ ചെയ്യാനും പഞ്ച് ചെയ്യാനും സാധിക്കൂ.'
+                    : 'Each driver can only access and punch using their own registered name and number.'}
                 </p>
                 <a
                   href="tel:+919876543200"

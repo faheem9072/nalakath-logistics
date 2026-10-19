@@ -257,6 +257,104 @@ class DataRepository {
     return found;
   }
 
+  async loginDriverByNameAndPhone(name: string, phone: string): Promise<Profile> {
+    const cleanName = (name || '').trim();
+    if (!cleanName) {
+      throw new Error('Please enter driver name / ഡ്രൈവറുടെ പേര് നൽകുക');
+    }
+
+    let cleanPhone = (phone || '').trim().replace(/[\s-]/g, '');
+    if (cleanPhone.length === 10 && !cleanPhone.startsWith('+')) {
+      cleanPhone = `+91${cleanPhone}`;
+    }
+    if (!cleanPhone.match(/^\+?[1-9]\d{9,14}$/)) {
+      throw new Error('Please enter a valid 10-digit mobile number / ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക');
+    }
+
+    const normInputName = cleanName.toLowerCase();
+    const last10InputPhone = cleanPhone.slice(-10);
+
+    // 1. Look for registered driver matching the mobile number (last 10 digits)
+    const phoneMatches = this.drivers.filter((d) => {
+      const dCleanPhone = d.phone.replace(/[\s-]/g, '');
+      return dCleanPhone.slice(-10) === last10InputPhone;
+    });
+
+    if (phoneMatches.length === 0) {
+      // Check if driver exists with matching name but different phone
+      const nameMatch = this.drivers.find((d) => {
+        const dNorm = d.full_name.trim().toLowerCase();
+        return (
+          dNorm === normInputName ||
+          dNorm.split(/\s+/)[0] === normInputName ||
+          normInputName.split(/\s+/)[0] === dNorm
+        );
+      });
+      if (nameMatch) {
+        throw new Error(
+          `നൽകിയ മൊബൈൽ നമ്പർ (${cleanPhone}) ഡ്രൈവർ ${nameMatch.full_name}ന്റെ രജിസ്റ്റർ ചെയ്ത നമ്പറുമായി പൊരുത്തപ്പെടുന്നില്ല. ഓണർ നൽകിയ നമ്പർ തന്നെ നൽകുക. / Mobile number does not match registered phone for ${nameMatch.full_name}.`
+        );
+      }
+      throw new Error(
+        `ഈ പേരോ നമ്പറോ ഓണർ ഡാഷ്‌ബോർഡിൽ രജിസ്റ്റർ ചെയ്തിട്ടില്ല. ദയവായി ഓണർ നൽകിയ ഡ്രൈവർ പേരും മൊബൈൽ നമ്പറും നൽകുക. / Driver not found in owner registry.`
+      );
+    }
+
+    // 2. Validate that the provided name matches one of the drivers with this phone
+    const matchedDriver = phoneMatches.find((d) => {
+      const dNorm = d.full_name.trim().toLowerCase();
+      const dParts = dNorm.split(/\s+/);
+      const inputParts = normInputName.split(/\s+/);
+      return (
+        dNorm === normInputName ||
+        dParts[0] === normInputName ||
+        inputParts[0] === dParts[0] ||
+        normInputName.includes(dNorm) ||
+        dNorm.includes(normInputName)
+      );
+    });
+
+    if (!matchedDriver) {
+      throw new Error(
+        `നൽകിയ പേര് (${cleanName}) ഈ മൊബൈൽ നമ്പറിലുള്ള ഡ്രൈവറുടെ രജിസ്റ്റർ ചെയ്ത പേരുമായി (${phoneMatches[0].full_name}) പൊരുത്തപ്പെടുന്നില്ല. / Name does not match registered driver name.`
+      );
+    }
+
+    if (matchedDriver.status !== 'active') {
+      throw new Error('ഈ ഡ്രൈവർ അക്കൗണ്ട് താൽക്കാലികമായി നിർജ്ജീവമാക്കിയിരിക്കുന്നു. ദയവായി ഓണറെ ബന്ധപ്പെടുക. / Account inactive.');
+    }
+
+    // Find or create profile linked to this driver
+    let profile = this.profiles.find(
+      (p) =>
+        (matchedDriver.profile_id && p.id === matchedDriver.profile_id) ||
+        p.phone.replace(/[\s-]/g, '').slice(-10) === last10InputPhone
+    );
+
+    if (!profile) {
+      profile = {
+        id: `profile-${matchedDriver.id}`,
+        phone: matchedDriver.phone,
+        full_name: matchedDriver.full_name,
+        role: 'driver',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.profiles.push(profile);
+    } else {
+      profile.role = 'driver';
+      profile.full_name = matchedDriver.full_name;
+      profile.phone = matchedDriver.phone;
+      profile.is_active = true;
+    }
+
+    matchedDriver.profile_id = profile.id;
+    this.currentUserId = profile.id;
+    this.persist();
+    return profile;
+  }
+
   async logout() {
     this.currentUserId = '';
     if (typeof window !== 'undefined') {
