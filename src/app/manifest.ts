@@ -1,0 +1,28 @@
+import type { MetadataRoute } from 'next';
+
+export default function manifest(): MetadataRoute.Manifest {
+  return {
+    name: 'നാലകത്ത് ലോജിസ്റ്റിക്സ് — Nalakath Logistics',
+    short_name: 'നാലകത്ത്',
+    description: 'ഫ്ലീറ്റ് ഓപ്പറേഷൻസ്, ഡ്രൈവർ പഞ്ച് പോർട്ടൽ & വെഹിക്കിൾ ട്രാക്കിങ്',
+    start_url: '/',
+    display: 'standalone',
+    orientation: 'portrait',
+    background_color: '#0f172a',
+    theme_color: '#0f172a',
+    icons: [
+      {
+        src: '/nalakath-logo.svg',
+        sizes: '192x192 512x512',
+        type: 'image/svg+xml',
+        purpose: 'any',
+      },
+      {
+        src: '/nalakath-logo.svg',
+        sizes: '512x512',
+        type: 'image/svg+xml',
+        purpose: 'maskable',
+      },
+    ],
+  };
+}

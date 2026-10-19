@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { PageContainer } from '@/components/layout/PageContainer';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -9,15 +10,11 @@ import { dataRepo } from '@/lib/data-service';
 import {
   aggregateDriverReport,
   aggregateVehicleReport,
-  aggregateRouteReport,
-  aggregateTeamReport,
 } from '@/lib/utils/report-aggregator';
 import { exportToCSV, triggerPrintReport } from '@/lib/utils/export-helpers';
 import {
   DriverReportItem,
   VehicleReportItem,
-  RouteReportItem,
-  TeamReportItem,
 } from '@/types/models';
 import {
   Download,
@@ -31,25 +28,31 @@ import {
   Clock,
   TrendingUp,
   FileSpreadsheet,
+  Search,
 } from 'lucide-react';
 import { NalakathLogo } from '@/components/brand/NalakathLogo';
 
 export default function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<'driver' | 'vehicle' | 'route' | 'team'>('driver');
+  const [activeTab, setActiveTab] = useState<'driver' | 'vehicle'>('driver');
+  const [driverSearchQuery, setDriverSearchQuery] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [companyFilter, setCompanyFilter] = useState<'all' | 'Delhivery' | 'Shadowfax'>('all');
 
   const [driverReport, setDriverReport] = useState<DriverReportItem[]>([]);
   const [vehicleReport, setVehicleReport] = useState<VehicleReportItem[]>([]);
-  const [routeReport, setRouteReport] = useState<RouteReportItem[]>([]);
-  const [teamReport, setTeamReport] = useState<TeamReportItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [selectedDriverAudit, setSelectedDriverAudit] = useState<DriverReportItem | null>(null);
 
-  const generateReports = async (sDate?: string, eDate?: string) => {
+  const generateReports = async (
+    sDate?: string,
+    eDate?: string,
+    comp?: 'all' | 'Delhivery' | 'Shadowfax'
+  ) => {
     setIsLoading(true);
     try {
-      const raw = await dataRepo.getReportRawData();
+      const activeComp = comp !== undefined ? comp : companyFilter;
+      const raw = await dataRepo.getReportRawData(activeComp);
       const input = {
         ...raw,
         startDate: sDate || startDate || undefined,
@@ -58,8 +61,6 @@ export default function ReportsPage() {
 
       setDriverReport(aggregateDriverReport(input));
       setVehicleReport(aggregateVehicleReport(input));
-      setRouteReport(aggregateRouteReport(input));
-      setTeamReport(aggregateTeamReport(input));
     } catch (err) {
       console.error('Failed to generate reports:', err);
     } finally {
@@ -76,14 +77,14 @@ export default function ReportsPage() {
     const e = `${y}-${m}-${day}`;
     setStartDate(s);
     setEndDate(e);
-    generateReports(s, e);
+    generateReports(s, e, companyFilter);
   }, []);
 
   useEffect(() => {
     if (startDate && endDate) {
-      generateReports();
+      generateReports(startDate, endDate, companyFilter);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, companyFilter]);
 
   const handleExportCSV = () => {
     const period = `${startDate}_to_${endDate}`;
@@ -119,36 +120,20 @@ export default function ReportsPage() {
         vehicleId: 'Vehicle ID',
         maintenancePeriodsCount: 'Maintenance Periods',
       });
-    } else if (activeTab === 'route') {
-      exportToCSV(`fleetflow_route_report_${period}`, routeReport, {
-        routeCode: 'Route Code',
-        routeName: 'Route Name',
-        origin: 'Origin',
-        destination: 'Destination',
-        clientName: 'Client',
-        completedTripsCount: 'Completed Trips',
-        distinctDriversCount: 'Distinct Drivers',
-        distinctVehiclesCount: 'Distinct Vehicles',
-        totalDistanceKm: 'Total Distance (km)',
-        routeId: 'Route ID',
-      });
-    } else {
-      exportToCSV(`fleetflow_team_report_${period}`, teamReport, {
-        teamName: 'Client / Team Name',
-        contactPerson: 'Contact Person',
-        completedTripsCount: 'Completed Trips',
-        distinctVehiclesCount: 'Distinct Vehicles Deployed',
-        distinctDriversCount: 'Distinct Drivers Involved',
-        totalDistanceKm: 'Total Distance (km)',
-        teamId: 'Team ID',
-      });
     }
   };
 
+  const filteredDriverReport = driverReport.filter(
+    (d) =>
+      d.driverName.toLowerCase().includes(driverSearchQuery.toLowerCase()) ||
+      d.phone.includes(driverSearchQuery) ||
+      (d.employeeCode && d.employeeCode.toLowerCase().includes(driverSearchQuery.toLowerCase()))
+  );
+
   return (
     <PageContainer
-      title="Monthly Fleet Operations Reports"
-      subtitle="Audited duty days, completed trips, vehicle deployments, and verified odometer distances."
+      title="മാസാവസാന കണക്കുകൾ (Monthly Reports)"
+      subtitle="ഡ്രൈവർമാർ എത്ര ദിവസം പണിയെടുത്തു, ഏതൊക്കെ വണ്ടിയിൽ എത്ര KM ഓടി, വണ്ടികളുടെ മാസ ചിലവുകൾ."
       action={
         <div className="flex items-center gap-2 print:hidden">
           <Button
@@ -170,58 +155,84 @@ export default function ReportsPage() {
         </div>
       }
     >
-      {/* Date Filter & Tab Selection */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4 print:hidden">
-        {/* Report Tabs */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg w-full md:w-auto">
+      {/* Date Filter, Tab Selection & Company Filter */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col xl:flex-row items-center justify-between gap-4 print:hidden">
+        {/* Report Tabs (Only 2 essential tabs: Driver & Vehicle) */}
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg w-full xl:w-auto overflow-x-auto">
           <button
             onClick={() => setActiveTab('driver')}
-            className={`flex-1 md:flex-initial px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`flex-1 xl:flex-initial px-4 py-2 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
               activeTab === 'driver'
-                ? 'bg-white text-blue-700 shadow-xs'
+                ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>Driver-wise</span>
+            <span>👷 ഡ്രൈവർ കണക്ക് (Driver-wise)</span>
           </button>
           <button
             onClick={() => setActiveTab('vehicle')}
-            className={`flex-1 md:flex-initial px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+            className={`flex-1 xl:flex-initial px-4 py-2 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 whitespace-nowrap ${
               activeTab === 'vehicle'
-                ? 'bg-white text-blue-700 shadow-xs'
+                ? 'bg-blue-600 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <Truck className="w-3.5 h-3.5" />
-            <span>Vehicle-wise</span>
+            <span>🚛 വണ്ടി ചിലവ് (Vehicle-wise)</span>
           </button>
+        </div>
+
+        {/* Company Filter Tabs */}
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg w-full xl:w-auto">
+          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider px-2 shrink-0">
+            Company:
+          </span>
           <button
-            onClick={() => setActiveTab('route')}
-            className={`flex-1 md:flex-initial px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'route'
-                ? 'bg-white text-blue-700 shadow-xs'
+            onClick={() => {
+              setCompanyFilter('all');
+              generateReports(startDate, endDate, 'all');
+            }}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+              companyFilter === 'all'
+                ? 'bg-white text-slate-900 shadow-xs'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <MapPin className="w-3.5 h-3.5" />
-            <span>Route-wise</span>
+            All
           </button>
           <button
-            onClick={() => setActiveTab('team')}
-            className={`flex-1 md:flex-initial px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'team'
-                ? 'bg-white text-blue-700 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+            onClick={() => {
+              setCompanyFilter('Delhivery');
+              generateReports(startDate, endDate, 'Delhivery');
+            }}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+              companyFilter === 'Delhivery'
+                ? 'bg-rose-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-rose-700'
             }`}
           >
-            <Building2 className="w-3.5 h-3.5" />
-            <span>Client / Team</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+            <span>Delhivery</span>
+          </button>
+          <button
+            onClick={() => {
+              setCompanyFilter('Shadowfax');
+              generateReports(startDate, endDate, 'Shadowfax');
+            }}
+            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
+              companyFilter === 'Shadowfax'
+                ? 'bg-amber-600 text-white shadow-xs'
+                : 'text-slate-600 hover:text-amber-700'
+            }`}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            <span>Shadowfax</span>
           </button>
         </div>
 
         {/* Date Range Inputs */}
-        <div className="flex items-center gap-2 text-xs font-medium text-slate-700 w-full md:w-auto">
+        <div className="flex items-center gap-2 text-xs font-medium text-slate-700 w-full xl:w-auto">
           <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
           <span>From</span>
           <input
@@ -276,12 +287,8 @@ export default function ReportsPage() {
               <BarChart3 className="w-4 h-4 text-blue-600" />
               <span>
                 {activeTab === 'driver'
-                  ? 'Top Drivers by Job Hours & Verified Transit Distance'
-                  : activeTab === 'vehicle'
-                  ? 'Vehicle Utilization by Distance (km)'
-                  : activeTab === 'route'
-                  ? 'Route Trips Completed'
-                  : 'Client / Team Service Completed Trips'}
+                  ? 'ഡ്രൈവർമാരുടെ ജോലി സമയവും കിലോമീറ്ററും (Top Drivers)'
+                  : 'വണ്ടികളുടെ കിലോമീറ്റർ ഉപയോഗം (Vehicle Distance)'}
               </span>
             </h3>
             <span className="text-[11px] text-slate-400 font-mono">
@@ -340,58 +347,6 @@ export default function ReportsPage() {
                   </div>
                 );
               })}
-
-            {activeTab === 'route' &&
-              routeReport.slice(0, 5).map((r) => {
-                const maxTrips = Math.max(...routeReport.map((x) => x.completedTripsCount), 5);
-                const percent = Math.min(
-                  100,
-                  Math.round((r.completedTripsCount / maxTrips) * 100)
-                );
-                return (
-                  <div key={r.routeId} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="text-slate-800 font-semibold">
-                        {r.routeCode} — {r.routeName}
-                      </span>
-                      <span className="font-mono text-slate-600">
-                        {r.completedTripsCount} trips
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-indigo-600 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-
-            {activeTab === 'team' &&
-              teamReport.slice(0, 5).map((t) => {
-                const maxTrips = Math.max(...teamReport.map((x) => x.completedTripsCount), 5);
-                const percent = Math.min(
-                  100,
-                  Math.round((t.completedTripsCount / maxTrips) * 100)
-                );
-                return (
-                  <div key={t.teamId} className="space-y-1">
-                    <div className="flex items-center justify-between text-xs font-medium">
-                      <span className="text-slate-800 font-semibold">{t.teamName}</span>
-                      <span className="font-mono text-slate-600">
-                        {t.completedTripsCount} trips
-                      </span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="bg-purple-600 h-full rounded-full transition-all duration-500"
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
           </div>
         </CardContent>
       </Card>
@@ -406,20 +361,37 @@ export default function ReportsPage() {
           <div className="overflow-x-auto">
             {/* 1. Driver-wise Table */}
             {activeTab === 'driver' && (
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th className="px-5 py-3.5">Driver</th>
-                    <th className="px-5 py-3.5">Duty Days</th>
-                    <th className="px-5 py-3.5">Total Job Time (Hours)</th>
-                    <th className="px-5 py-3.5">Trips & Distance</th>
-                    <th className="px-5 py-3.5">Vehicles Driven (Breakdown)</th>
-                    <th className="px-5 py-3.5">Routes Operated</th>
-                    <th className="px-5 py-3.5 text-right">Audit</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {driverReport.map((row) => (
+              <>
+                <div className="p-3 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="relative w-full sm:max-w-md">
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={driverSearchQuery}
+                      onChange={(e) => setDriverSearchQuery(e.target.value)}
+                      placeholder="ഡ്രൈവറുടെ പേര് / ഫോൺ നമ്പർ അടിച്ചു തിരയുക (Search driver)..."
+                      className="w-full pl-9 pr-3 py-2 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                    />
+                  </div>
+                  <div className="text-xs font-bold text-slate-600">
+                    {filteredDriverReport.length} ഡ്രൈവർമാർ (Drivers found)
+                  </div>
+                </div>
+
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th className="px-5 py-3.5">ഡ്രൈവർ (Driver)</th>
+                      <th className="px-5 py-3.5">ജോലി ചെയ്ത ദിവസങ്ങൾ (Days)</th>
+                      <th className="px-5 py-3.5">സമയം (Hours)</th>
+                      <th className="px-5 py-3.5">ഓടിയ കിലോമീറ്റർ (Total KM)</th>
+                      <th className="px-5 py-3.5">ഓടിച്ച വണ്ടികൾ (Vehicles Driven)</th>
+                      <th className="px-5 py-3.5">റൂട്ടുകൾ (Routes)</th>
+                      <th className="px-5 py-3.5 text-right">വിശദാംശങ്ങൾ (Details)</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {filteredDriverReport.map((row) => (
                     <tr key={row.driverId} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-5 py-4">
                         <div className="font-semibold text-slate-900">{row.driverName}</div>
@@ -501,6 +473,7 @@ export default function ReportsPage() {
                   ))}
                 </tbody>
               </table>
+            </>
             )}
 
             {/* 2. Vehicle-wise Table */}
@@ -508,14 +481,15 @@ export default function ReportsPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="px-5 py-3.5">Registration</th>
-                    <th className="px-5 py-3.5">Make & Model</th>
-                    <th className="px-5 py-3.5">Duty Days Deployed</th>
-                    <th className="px-5 py-3.5">Completed Trips</th>
-                    <th className="px-5 py-3.5">Recorded Distance</th>
-                    <th className="px-5 py-3.5">Drivers Involved</th>
-                    <th className="px-5 py-3.5">Routes Operated</th>
-                    <th className="px-5 py-3.5">Current Status</th>
+                    <th className="px-5 py-3.5">വണ്ടി നമ്പർ (Registration)</th>
+                    <th className="px-5 py-3.5">കമ്പനി (Company)</th>
+                    <th className="px-5 py-3.5">മോഡൽ (Make & Model)</th>
+                    <th className="px-5 py-3.5">ഓടിയ ദിവസങ്ങൾ (Duty Days)</th>
+                    <th className="px-5 py-3.5">ട്രിപ്പുകൾ (Trips)</th>
+                    <th className="px-5 py-3.5">കിലോമീറ്റർ (Total KM)</th>
+                    <th className="px-5 py-3.5">ഓടിച്ച ഡ്രൈവർമാർ (Drivers)</th>
+                    <th className="px-5 py-3.5">റൂട്ടുകൾ (Routes)</th>
+                    <th className="px-5 py-3.5 text-right">മാസ ചിലവുകൾ (Expenses)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -523,6 +497,22 @@ export default function ReportsPage() {
                     <tr key={row.vehicleId} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-5 py-4 font-mono font-bold text-slate-900">
                         {row.registrationNumber}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                            row.company === 'Delhivery'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200'
+                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              row.company === 'Delhivery' ? 'bg-rose-500' : 'bg-amber-500'
+                            }`}
+                          />
+                          <span>{row.company || 'Delhivery'}</span>
+                        </span>
                       </td>
                       <td className="px-5 py-4 text-xs">{row.makeModel}</td>
                       <td className="px-5 py-4 font-mono font-bold text-slate-900">
@@ -534,93 +524,18 @@ export default function ReportsPage() {
                       <td className="px-5 py-4 font-mono font-bold text-emerald-600">
                         {row.totalDistanceKm} km
                       </td>
-                      <td className="px-5 py-4 text-xs">
+                      <td className="px-5 py-4 text-xs font-medium">
                         {row.driversUsed.length > 0 ? row.driversUsed.join(', ') : '—'}
                       </td>
                       <td className="px-5 py-4 text-xs">
                         {row.routesOperated.length > 0 ? row.routesOperated.join(', ') : '—'}
                       </td>
-                      <td className="px-5 py-4 capitalize text-xs font-semibold">
-                        {row.status}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            {/* 3. Route-wise Table */}
-            {activeTab === 'route' && (
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th className="px-5 py-3.5">Route Code</th>
-                    <th className="px-5 py-3.5">Route Name</th>
-                    <th className="px-5 py-3.5">Client</th>
-                    <th className="px-5 py-3.5">Completed Trips</th>
-                    <th className="px-5 py-3.5">Distinct Drivers</th>
-                    <th className="px-5 py-3.5">Distinct Vehicles</th>
-                    <th className="px-5 py-3.5">Total Distance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {routeReport.map((row) => (
-                    <tr key={row.routeId} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-4 font-mono font-bold text-slate-900">
-                        {row.routeCode}
-                      </td>
-                      <td className="px-5 py-4 text-xs">
-                        <div className="font-semibold text-slate-900">{row.routeName}</div>
-                        <div className="text-slate-400 text-[11px]">
-                          {row.origin} → {row.destination}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 text-xs">{row.clientName}</td>
-                      <td className="px-5 py-4 font-mono font-bold text-slate-900">
-                        {row.completedTripsCount} trips
-                      </td>
-                      <td className="px-5 py-4 font-mono text-xs">{row.distinctDriversCount}</td>
-                      <td className="px-5 py-4 font-mono text-xs">{row.distinctVehiclesCount}</td>
-                      <td className="px-5 py-4 font-mono font-bold text-emerald-600">
-                        {row.totalDistanceKm} km
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            {/* 4. Team-wise Table */}
-            {activeTab === 'team' && (
-              <table className="w-full text-left text-sm">
-                <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
-                  <tr>
-                    <th className="px-5 py-3.5">Client / Team Name</th>
-                    <th className="px-5 py-3.5">Contact Person</th>
-                    <th className="px-5 py-3.5">Completed Trips</th>
-                    <th className="px-5 py-3.5">Vehicles Deployed</th>
-                    <th className="px-5 py-3.5">Drivers Assigned</th>
-                    <th className="px-5 py-3.5">Total Service Distance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {teamReport.map((row) => (
-                    <tr key={row.teamId} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-4 font-bold text-slate-900">{row.teamName}</td>
-                      <td className="px-5 py-4 text-xs text-slate-600">
-                        {row.contactPerson || '—'}
-                      </td>
-                      <td className="px-5 py-4 font-mono font-bold text-slate-900">
-                        {row.completedTripsCount} trips
-                      </td>
-                      <td className="px-5 py-4 font-mono text-xs font-semibold">
-                        {row.distinctVehiclesCount} vehicles
-                      </td>
-                      <td className="px-5 py-4 font-mono text-xs font-semibold">
-                        {row.distinctDriversCount} drivers
-                      </td>
-                      <td className="px-5 py-4 font-mono font-bold text-emerald-600">
-                        {row.totalDistanceKm} km
+                      <td className="px-5 py-4 text-right">
+                        <Link href={`/vehicles/${row.registrationNumber.slice(-4)}`}>
+                          <Button size="sm" variant="outline" className="text-xs py-1">
+                            ചിലവ് കാണുക (Expenses)
+                          </Button>
+                        </Link>
                       </td>
                     </tr>
                   ))}

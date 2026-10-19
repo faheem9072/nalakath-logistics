@@ -59,6 +59,8 @@ export interface Route {
   updated_at: string;
 }
 
+export type ClientCompany = 'Delhivery' | 'Shadowfax';
+
 export interface Vehicle {
   id: string;
   registration_number: string;
@@ -67,10 +69,32 @@ export interface Vehicle {
   capacity: number;
   current_odometer: number;
   status: VehicleStatus;
+  company?: ClientCompany | string;
+  is_adhoc?: boolean;
+  route_location?: string;
+  default_driver_names?: string[];
+  default_driver_ids?: string[];
   notes: string | null;
   created_at: string;
   updated_at: string;
 }
+
+export type ExpenseType = 'Fuel' | 'Toll' | 'Maintenance' | 'Other';
+
+export interface Expense {
+  id: string;
+  vehicle_id: string;
+  driver_id: string;
+  expense_type: ExpenseType;
+  amount: number;
+  date: string; // YYYY-MM-DD
+  litres?: number | null;
+  note?: string | null;
+  bill_photo_url?: string | null;
+  created_at: string;
+  updated_at?: string;
+}
+
 
 export interface Driver {
   id: string;

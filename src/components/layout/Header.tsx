@@ -2,15 +2,19 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { dataRepo } from '@/lib/data-service';
 import { Profile } from '@/types/database';
 import { StatusBadge } from '@/components/ui/Badge';
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { LogOut, Smartphone } from 'lucide-react';
 import { NalakathLogo } from '@/components/brand/NalakathLogo';
+import { LanguageSwitcher, useLanguage } from '@/lib/i18n/LanguageContext';
+import { InstallPwaButton } from '@/components/layout/InstallPwaButton';
 
 export function Header() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const { t } = useLanguage();
 
   useEffect(() => {
     dataRepo.getCurrentProfile().then(setProfile);
@@ -38,75 +42,78 @@ export function Header() {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2.5 pr-4 border-r border-slate-200">
+    <header className="h-14 sm:h-16 bg-white border-b border-slate-200/80 px-2.5 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+        <div className="flex items-center gap-2 sm:pr-4 sm:border-r sm:border-slate-200 shrink-0">
           <NalakathLogo size="sm" variant="circle" />
-          <div className="hidden sm:block">
-            <span className="text-xs font-black tracking-tight text-slate-900 block leading-tight">
-              NALAKATH LOGISTICS
+          <div>
+            <span className="text-xs sm:text-sm font-black tracking-tight text-slate-900 block leading-tight uppercase">
+              {t('brandTitle')}
             </span>
-            <span className="text-[10px] text-rose-600 font-semibold tracking-wider block">
-              ESTD. 1998
+            <span className="text-[9px] text-rose-600 font-bold tracking-wider block">
+              {t('since1998')}
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-            Live Ops
+
+        <div className="hidden sm:flex items-center gap-1.5 shrink-0">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-[10px] sm:text-xs font-bold text-slate-700 uppercase tracking-wider">
+            {t('liveOps')}
           </span>
-        </div>
-        <div className="hidden lg:flex items-center gap-1.5 text-xs text-slate-400 pl-4 border-l border-slate-200">
-          <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-          <span>RLS & Concurrency Enforced</span>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Quick Role Switcher for instant testing */}
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        {/* PWA Install Button */}
+        <InstallPwaButton />
+
+        {/* Language Switcher (Always visible on mobile & desktop) */}
+        <LanguageSwitcher />
+
+        {/* Desktop Quick Role Switcher */}
         <div className="hidden sm:flex items-center gap-1 bg-slate-100 p-1 rounded-lg text-xs font-medium text-slate-600 border border-slate-200/60">
-          <span className="px-2 text-[11px] text-slate-500 font-semibold uppercase">Role:</span>
+          <span className="px-1.5 text-[10px] text-slate-500 font-bold uppercase">Role:</span>
           <button
             onClick={() => handleRoleSwitch('owner')}
-            className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+            className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
               profile?.role === 'owner'
-                ? 'bg-white text-blue-700 shadow-xs font-semibold'
+                ? 'bg-white text-blue-700 shadow-xs font-bold'
                 : 'hover:text-slate-900'
             }`}
           >
-            Owner
+            {t('owner')}
           </button>
           <button
             onClick={() => handleRoleSwitch('dispatcher')}
-            className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+            className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
               profile?.role === 'dispatcher'
-                ? 'bg-white text-blue-700 shadow-xs font-semibold'
+                ? 'bg-white text-blue-700 shadow-xs font-bold'
                 : 'hover:text-slate-900'
             }`}
           >
-            Dispatcher
+            {t('dispatcher')}
           </button>
           <button
             onClick={() => handleRoleSwitch('driver')}
-            className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+            className={`px-2 py-0.5 rounded-md transition-all cursor-pointer ${
               profile?.role === 'driver'
-                ? 'bg-white text-emerald-700 shadow-xs font-semibold'
+                ? 'bg-white text-emerald-700 shadow-xs font-bold'
                 : 'hover:text-slate-900'
             }`}
           >
-            Driver
+            {t('driver')}
           </button>
         </div>
 
-        {/* User Card */}
+        {/* User Badge */}
         {profile && (
-          <div className="flex items-center gap-3 pl-2">
-            <div className="text-right hidden sm:block">
-              <div className="text-sm font-semibold text-slate-900 leading-none">
+          <div className="flex items-center gap-2">
+            <div className="text-right hidden md:block">
+              <div className="text-xs font-bold text-slate-900 leading-none">
                 {profile.full_name}
               </div>
-              <div className="text-xs text-slate-500 mt-1 font-mono">{profile.phone}</div>
+              <div className="text-[10px] text-slate-500 mt-0.5 font-mono">{profile.phone}</div>
             </div>
             <StatusBadge status={profile.role} size="sm" />
           </div>
@@ -115,8 +122,8 @@ export function Header() {
         {/* Logout Button */}
         <button
           onClick={handleLogout}
-          title="Sign out"
-          className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+          title={t('logout')}
+          className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
         >
           <LogOut className="w-4 h-4" />
         </button>

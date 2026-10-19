@@ -280,6 +280,7 @@ export function aggregateVehicleReport(input: AggregateReportsInput): VehicleRep
       vehicleType: vehicle.vehicle_type,
       currentOdometer: vehicle.current_odometer,
       status: vehicle.status,
+      company: vehicle.company || 'Delhivery',
       driversCount: driverNamesSet.size,
       driversUsed: Array.from(driverNamesSet),
       dutyDatesCount: dutyDatesSet.size,

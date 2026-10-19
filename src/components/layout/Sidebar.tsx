@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { clsx } from 'clsx';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
 import {
   LayoutDashboard,
   CalendarCheck2,
@@ -17,26 +18,22 @@ import {
   Smartphone,
   ChevronRight,
 } from 'lucide-react';
-
 import { NalakathLogo } from '@/components/brand/NalakathLogo';
-
-const NAV_ITEMS = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Daily Assignments', href: '/assignments', icon: CalendarCheck2 },
-  { label: 'Trips & Log', href: '/trips', icon: Navigation },
-  { label: 'Vehicles', href: '/vehicles', icon: Truck },
-  { label: 'Drivers', href: '/drivers', icon: Users },
-  { label: 'Teams & Clients', href: '/teams', icon: Building2 },
-  { label: 'Routes', href: '/routes', icon: MapPin },
-  { label: 'Reports', href: '/reports', icon: BarChart3 },
-  { label: 'Audit Log', href: '/audit-logs', icon: ShieldAlert },
-];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { t } = useLanguage();
+
+  const navItems = [
+    { label: t('navDashboard'), href: '/dashboard', icon: LayoutDashboard },
+    { label: t('driverMonthCalcTitle'), href: '/reports', icon: BarChart3 },
+    { label: t('navVehicles'), href: '/vehicles', icon: Truck },
+    { label: t('navAssignments'), href: '/assignments', icon: CalendarCheck2 },
+    { label: t('navDrivers'), href: '/drivers', icon: Users },
+  ];
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col shrink-0 min-h-screen border-r border-slate-800">
+    <aside className="hidden lg:flex w-64 bg-slate-900 text-slate-300 flex-col shrink-0 min-h-screen border-r border-slate-800">
       {/* Brand Header */}
       <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-black/40">
         <div className="flex items-center gap-3">
@@ -44,7 +41,7 @@ export function Sidebar() {
           <div>
             <div className="flex items-center gap-1.5">
               <h1 className="text-sm font-black text-white tracking-tight uppercase">
-                NALAKATH
+                {t('brandTitle')}
               </h1>
               <span className="text-[9px] font-bold text-rose-500 bg-rose-950/80 px-1 py-0.2 rounded border border-rose-800/80">
                 1998
@@ -62,7 +59,7 @@ export function Sidebar() {
         <div className="px-3 pb-2 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
           Operations
         </div>
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
 
@@ -106,7 +103,7 @@ export function Sidebar() {
         >
           <div className="flex items-center gap-3">
             <Smartphone className="w-4 h-4 shrink-0" />
-            <span>Driver Mobile Portal</span>
+            <span>{t('driverApp')}</span>
           </div>
           <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono">
             PWA

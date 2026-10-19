@@ -9,11 +9,16 @@ import {
   Trip,
   AssignmentEvent,
   AuditLog,
+  Expense,
+  ExpenseType,
 } from '@/types/database';
 import {
   AssignmentWithDetails,
   TripWithDetails,
   DashboardMetrics,
+  ExpenseWithDetails,
+  VehicleDetailReport,
+  VehicleMonthlyDriverStats,
 } from '@/types/models';
 import {
   INITIAL_PROFILES,
@@ -25,10 +30,65 @@ import {
   INITIAL_TRIPS,
   INITIAL_EVENTS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_EXPENSES,
   getTodayDateString,
+  getCurrentMonthPrefix,
 } from './mock/mock-store';
 import { checkScheduleConflicts } from './utils/conflict-detector';
 import { calculateTripDistance } from './utils/odometer-calculator';
+
+export interface DriverMonthlySummary {
+  driver: Driver;
+  month: string;
+  totalKilometers: number;
+  totalDaysWorked: number;
+  totalTripsCount: number;
+  vehiclesBreakdown: {
+    vehicle: Vehicle;
+    tripsCount: number;
+    totalKm: number;
+  }[];
+  tripDetails: {
+    tripId: string;
+    dutyDate: string;
+    vehicleRegistration: string;
+    vehicleModel: string;
+    destination: string;
+    routeName: string;
+    startOdo: number | null;
+    endOdo: number | null;
+    distance: number;
+    notes?: string | null;
+    status: string;
+  }[];
+}
+
+export interface VehicleTravelHistory {
+  vehicle: Vehicle;
+  totalRecordedDistance: number;
+  tripsCount: number;
+  uniqueDrivers: {
+    driver: Driver;
+    tripsCount: number;
+    totalKm: number;
+  }[];
+  history: {
+    tripId: string;
+    dutyDate: string;
+    driverName: string;
+    driverPhone: string;
+    destination: string;
+    routeName: string;
+    teamName: string;
+    startOdo: number | null;
+    endOdo: number | null;
+    distance: number;
+    notes?: string | null;
+    status: string;
+  }[];
+}
+
+const SEED_VERSION = 'nalakath_v6_oct2026';
 
 // Runtime in-memory state (can be saved/restored from localStorage in browser)
 class DataRepository {
@@ -41,45 +101,88 @@ class DataRepository {
   private trips: Trip[] = [...INITIAL_TRIPS];
   private events: AssignmentEvent[] = [...INITIAL_EVENTS];
   private auditLogs: AuditLog[] = [...INITIAL_AUDIT_LOGS];
+  private expenses: Expense[] = [...INITIAL_EXPENSES];
   private currentUserId: string = '00000000-0000-0000-0000-000000000001'; // Default Owner
 
   constructor() {
     if (typeof window !== 'undefined') {
       try {
-        const savedUser = localStorage.getItem('fleetflow_current_user_id');
-        if (savedUser) {
-          this.currentUserId = savedUser;
-        }
-        const savedAssignments = localStorage.getItem('fleetflow_assignments');
-        if (savedAssignments) {
-          this.assignments = JSON.parse(savedAssignments);
-        }
-        const savedTrips = localStorage.getItem('fleetflow_trips');
-        if (savedTrips) {
-          this.trips = JSON.parse(savedTrips);
-        }
-        const savedEvents = localStorage.getItem('fleetflow_events');
-        if (savedEvents) {
-          this.events = JSON.parse(savedEvents);
-        }
-        const savedVehicles = localStorage.getItem('fleetflow_vehicles');
-        if (savedVehicles) {
-          this.vehicles = JSON.parse(savedVehicles);
-        }
-        const savedDrivers = localStorage.getItem('fleetflow_drivers');
-        if (savedDrivers) {
-          this.drivers = JSON.parse(savedDrivers);
-        }
-        const savedRoutes = localStorage.getItem('fleetflow_routes');
-        if (savedRoutes) {
-          this.routes = JSON.parse(savedRoutes);
-        }
-        const savedTeams = localStorage.getItem('fleetflow_teams');
-        if (savedTeams) {
-          this.teams = JSON.parse(savedTeams);
+        const storedVersion = localStorage.getItem('fleetflow_seed_version');
+        if (storedVersion !== SEED_VERSION) {
+          // Version bump: clear old sample data and reseed with fresh seed data
+          localStorage.removeItem('fleetflow_assignments');
+          localStorage.removeItem('fleetflow_trips');
+          localStorage.removeItem('fleetflow_events');
+          localStorage.removeItem('fleetflow_vehicles');
+          localStorage.removeItem('fleetflow_drivers');
+          localStorage.removeItem('fleetflow_routes');
+          localStorage.removeItem('fleetflow_teams');
+          localStorage.removeItem('fleetflow_expenses');
+          localStorage.setItem('fleetflow_seed_version', SEED_VERSION);
+
+          this.profiles = [...INITIAL_PROFILES];
+          this.teams = [...INITIAL_TEAMS];
+          this.routes = [...INITIAL_ROUTES];
+          this.vehicles = [...INITIAL_VEHICLES];
+          this.drivers = [...INITIAL_DRIVERS];
+          this.assignments = [...INITIAL_ASSIGNMENTS];
+          this.trips = [...INITIAL_TRIPS];
+          this.events = [...INITIAL_EVENTS];
+          this.auditLogs = [...INITIAL_AUDIT_LOGS];
+          this.expenses = [...INITIAL_EXPENSES];
+        } else {
+          const savedUser = localStorage.getItem('fleetflow_current_user_id');
+          if (savedUser) {
+            this.currentUserId = savedUser;
+          }
+          const savedAssignments = localStorage.getItem('fleetflow_assignments');
+          if (savedAssignments) {
+            this.assignments = JSON.parse(savedAssignments);
+          }
+          const savedTrips = localStorage.getItem('fleetflow_trips');
+          if (savedTrips) {
+            this.trips = JSON.parse(savedTrips);
+          }
+          const savedEvents = localStorage.getItem('fleetflow_events');
+          if (savedEvents) {
+            this.events = JSON.parse(savedEvents);
+          }
+          const savedVehicles = localStorage.getItem('fleetflow_vehicles');
+          if (savedVehicles) {
+            this.vehicles = JSON.parse(savedVehicles);
+          }
+          const savedDrivers = localStorage.getItem('fleetflow_drivers');
+          if (savedDrivers) {
+            this.drivers = JSON.parse(savedDrivers);
+          }
+          const savedRoutes = localStorage.getItem('fleetflow_routes');
+          if (savedRoutes) {
+            this.routes = JSON.parse(savedRoutes);
+          }
+          const savedTeams = localStorage.getItem('fleetflow_teams');
+          if (savedTeams) {
+            this.teams = JSON.parse(savedTeams);
+          }
+          const savedExpenses = localStorage.getItem('fleetflow_expenses');
+          if (savedExpenses) {
+            this.expenses = JSON.parse(savedExpenses);
+          }
         }
       } catch (err) {
         console.warn('Failed to load local storage state:', err);
+      }
+
+      // Ensure today has seeded assignments if none exist in localStorage
+      const todayStr = getTodayDateString();
+      const hasToday = this.assignments.some((a) => a.duty_date === todayStr);
+      if (!hasToday && this.assignments.length > 0) {
+        this.assignments = this.assignments.map((a, idx) => {
+          if (idx < 4) {
+            return { ...a, duty_date: todayStr };
+          }
+          return a;
+        });
+        this.persist();
       }
     }
   }
@@ -95,11 +198,13 @@ class DataRepository {
         localStorage.setItem('fleetflow_drivers', JSON.stringify(this.drivers));
         localStorage.setItem('fleetflow_routes', JSON.stringify(this.routes));
         localStorage.setItem('fleetflow_teams', JSON.stringify(this.teams));
+        localStorage.setItem('fleetflow_expenses', JSON.stringify(this.expenses));
       } catch (err) {
         console.warn('Failed to persist to local storage:', err);
       }
     }
   }
+
 
   // --- AUTH METHODS ---
   async getCurrentProfile(): Promise<Profile | null> {
@@ -641,14 +746,64 @@ class DataRepository {
 
     if (!driver) return [];
 
+    const todayStr = getTodayDateString();
+    const todayAssigns = this.assignments.filter(
+      (a) => a.driver_id === driver.id && a.duty_date === todayStr && a.status !== 'cancelled'
+    );
+
+    // If driver has no assignment for today, auto-prepare their assignment if they have a default vehicle
+    if (todayAssigns.length === 0 && driver.is_fixed_route) {
+      const fixedVehicle = this.vehicles.find(
+        (v) =>
+          v.default_driver_ids?.includes(driver.id) ||
+          (v.default_driver_names || []).some(
+            (n) => n.toLowerCase() === driver.full_name.toLowerCase()
+          )
+      );
+      if (fixedVehicle) {
+        const defaultRoute =
+          this.routes.find((r) => r.id === driver.default_route_id) || this.routes[0];
+        const team =
+          this.teams.find((t) =>
+            t.name.toLowerCase().includes((fixedVehicle.company || '').toLowerCase())
+          ) || this.teams[0];
+
+        const autoDuty: Assignment = {
+          id: `assign-auto-${Date.now()}`,
+          duty_date: todayStr,
+          driver_id: driver.id,
+          vehicle_id: fixedVehicle.id,
+          route_id: defaultRoute?.id || null,
+          team_id: team?.id || null,
+          planned_start_time: '08:00',
+          planned_end_time: '17:00',
+          status: 'confirmed',
+          driver_confirmed_at: new Date().toISOString(),
+          notes: fixedVehicle.route_location || 'Fixed Route Scheduled Duty',
+          created_by: driver.profile_id || this.currentUserId,
+          updated_by: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        this.assignments.unshift(autoDuty);
+        this.persist();
+      }
+    }
+
     const all = await this.getAssignmentsWithDetails();
     return all.filter((a) => a.driver_id === driver.id);
   }
 
   // --- FLEET MASTER DATA ---
-  async getVehicles(): Promise<Vehicle[]> {
-    return [...this.vehicles];
+  async getVehicles(company?: string): Promise<Vehicle[]> {
+    if (!company || company === 'all' || company === 'All') {
+      return [...this.vehicles];
+    }
+    return this.vehicles.filter(
+      (v) => (v.company || '').toLowerCase() === company.toLowerCase()
+    );
   }
+
 
   async createVehicle(data: Omit<Vehicle, 'id' | 'created_at' | 'updated_at'>): Promise<Vehicle> {
     const existing = this.vehicles.find(
@@ -682,25 +837,311 @@ class DataRepository {
     return [...this.drivers];
   }
 
-  async createDriver(data: Omit<Driver, 'id' | 'profile_id' | 'created_at' | 'updated_at'>): Promise<Driver> {
-    const existingCode = this.drivers.find(
-      (d) => d.employee_code.toUpperCase() === data.employee_code.toUpperCase()
+  async createDriver(data: {
+    full_name: string;
+    phone: string;
+    employee_code?: string;
+    license_number?: string;
+    license_expiry?: string;
+    is_fixed_route?: boolean;
+    default_route_id?: string | null;
+    status?: import('@/types/database').DriverStatus;
+    notes?: string | null;
+  }): Promise<Driver> {
+    const cleanPhone = data.phone.trim();
+    const existingPhone = this.drivers.find(
+      (d) => d.phone.replace(/[\s-]/g, '') === cleanPhone.replace(/[\s-]/g, '')
     );
-    if (existingCode) {
-      throw new Error(`Driver with employee code ${data.employee_code} already exists.`);
+    if (existingPhone) {
+      throw new Error(`Driver with mobile number ${cleanPhone} is already registered.`);
+    }
+
+    // Auto-generate employee code if not provided
+    let code = (data.employee_code || '').trim().toUpperCase();
+    if (!code) {
+      code = `DRV-${1000 + this.drivers.length + 1}`;
+      while (this.drivers.some((d) => d.employee_code.toUpperCase() === code)) {
+        code = `DRV-${Math.floor(1000 + Math.random() * 9000)}`;
+      }
+    } else {
+      const existingCode = this.drivers.find(
+        (d) => d.employee_code.toUpperCase() === code
+      );
+      if (existingCode) {
+        throw new Error(`Driver with employee code ${code} already exists.`);
+      }
     }
 
     const newDriver: Driver = {
-      ...data,
-      id: `drv-${Date.now()}`,
+      id: `drv-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       profile_id: null,
-      employee_code: data.employee_code.toUpperCase(),
+      employee_code: code,
+      full_name: data.full_name.trim(),
+      phone: cleanPhone,
+      license_number: data.license_number?.trim() || `DL-${cleanPhone.replace(/\D/g, '').slice(-6) || 'NA'}`,
+      license_expiry: data.license_expiry || '2035-12-31',
+      is_fixed_route: data.is_fixed_route ?? false,
+      default_route_id: data.default_route_id || null,
+      status: data.status || 'active',
+      notes: data.notes?.trim() || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
+
+    // Auto-create user profile so driver can log in immediately
+    const existingProfile = this.profiles.find(
+      (p) => p.phone.replace(/[\s-]/g, '') === cleanPhone.replace(/[\s-]/g, '')
+    );
+    if (!existingProfile) {
+      const newProfile: Profile = {
+        id: `profile-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        phone: cleanPhone,
+        full_name: data.full_name.trim(),
+        role: 'driver',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.profiles.push(newProfile);
+      newDriver.profile_id = newProfile.id;
+    } else {
+      newDriver.profile_id = existingProfile.id;
+    }
+
     this.drivers.push(newDriver);
     this.persist();
     return newDriver;
+  }
+
+  async deleteDriver(id: string): Promise<void> {
+    const idx = this.drivers.findIndex((d) => d.id === id);
+    if (idx !== -1) {
+      const d = this.drivers[idx];
+      this.drivers.splice(idx, 1);
+      this.profiles = this.profiles.filter((p) => p.phone !== d.phone);
+      this.persist();
+    }
+  }
+
+  async getVehicleTodayStatus(searchQuery: string) {
+    const q = searchQuery.trim().toLowerCase();
+    const today = getTodayDateString();
+
+    const vehicle = this.vehicles.find(
+      (v) =>
+        v.registration_number.toLowerCase().includes(q) ||
+        v.id.toLowerCase() === q
+    );
+
+    if (!vehicle) return null;
+
+    const assignment = this.assignments.find(
+      (a) => a.vehicle_id === vehicle.id && a.duty_date === today
+    );
+
+    let driver: Driver | null = null;
+    let route: Route | null = null;
+    let trips: Trip[] = [];
+    let activeTrip: Trip | null = null;
+
+    if (assignment) {
+      driver = this.drivers.find((d) => d.id === assignment.driver_id) || null;
+      route = this.routes.find((r) => r.id === assignment.route_id) || null;
+      trips = this.trips.filter((t) => t.assignment_id === assignment.id);
+      activeTrip = trips.find((t) => t.status === 'in_progress') || null;
+    }
+
+    return {
+      vehicle,
+      assignment: assignment || null,
+      driver,
+      route,
+      trips,
+      activeTrip,
+      hasDutyToday: !!assignment,
+    };
+  }
+
+  async getAllTrips(): Promise<Trip[]> {
+    return [...this.trips];
+  }
+
+  // --- MONTH-END DRIVER VEHICLE & KM CALCULATOR ---
+  async getDriverMonthlySummary(
+    driverIdOrPhone: string,
+    monthPrefix?: string
+  ): Promise<DriverMonthlySummary | null> {
+    const cleaned = driverIdOrPhone.replace(/[\s-]/g, '').toLowerCase();
+    const driver = this.drivers.find(
+      (d) =>
+        d.id === driverIdOrPhone ||
+        d.phone.replace(/[\s-]/g, '').toLowerCase() === cleaned ||
+        d.full_name.toLowerCase().includes(cleaned)
+    );
+
+    if (!driver) return null;
+
+    // Filter assignments for this driver
+    const driverAssignments = this.assignments.filter((a) => {
+      if (a.driver_id !== driver.id) return false;
+      if (monthPrefix && !a.duty_date.startsWith(monthPrefix)) return false;
+      return true;
+    });
+
+    const assignmentIds = new Set(driverAssignments.map((a) => a.id));
+    const assignmentsMap = new Map(driverAssignments.map((a) => [a.id, a]));
+    const vehiclesMap = new Map(this.vehicles.map((v) => [v.id, v]));
+    const routesMap = new Map(this.routes.map((r) => [r.id, r]));
+
+    // All trips belonging to this driver's assignments
+    const driverTrips = this.trips.filter((t) => assignmentIds.has(t.assignment_id));
+
+    // Vehicle breakdown tracking
+    const vehicleStats = new Map<string, { vehicle: Vehicle; tripsCount: number; totalKm: number }>();
+    const distinctDates = new Set<string>();
+    let totalKilometers = 0;
+
+    const tripDetails: DriverMonthlySummary['tripDetails'] = [];
+
+    for (const trip of driverTrips) {
+      const assignment = assignmentsMap.get(trip.assignment_id)!;
+      distinctDates.add(assignment.duty_date);
+
+      const vehicle = vehiclesMap.get(assignment.vehicle_id);
+      const route = assignment.route_id ? routesMap.get(assignment.route_id) : null;
+
+      const dist =
+        trip.end_odometer !== null &&
+        trip.end_odometer !== undefined &&
+        trip.start_odometer !== null &&
+        trip.start_odometer !== undefined
+          ? Math.max(0, trip.end_odometer - trip.start_odometer)
+          : 0;
+
+      totalKilometers += dist;
+
+      if (vehicle) {
+        if (!vehicleStats.has(vehicle.id)) {
+          vehicleStats.set(vehicle.id, {
+            vehicle,
+            tripsCount: 0,
+            totalKm: 0,
+          });
+        }
+        const stat = vehicleStats.get(vehicle.id)!;
+        stat.tripsCount += 1;
+        stat.totalKm += dist;
+      }
+
+      tripDetails.push({
+        tripId: trip.id,
+        dutyDate: assignment.duty_date,
+        vehicleRegistration: vehicle?.registration_number || 'Unknown',
+        vehicleModel: vehicle?.make_model || '',
+        destination: trip.actual_destination || route?.name || 'Local Route',
+        routeName: route ? `${route.code} (${route.name})` : 'Special Dispatch',
+        startOdo: trip.start_odometer,
+        endOdo: trip.end_odometer,
+        distance: dist,
+        notes: trip.driver_notes || assignment.notes,
+        status: trip.status,
+      });
+    }
+
+    // Sort newest date first
+    tripDetails.sort((a, b) => b.dutyDate.localeCompare(a.dutyDate));
+
+    return {
+      driver,
+      month: monthPrefix || 'All Time',
+      totalKilometers: Math.round(totalKilometers * 10) / 10,
+      totalDaysWorked: distinctDates.size,
+      totalTripsCount: driverTrips.length,
+      vehiclesBreakdown: Array.from(vehicleStats.values()).sort((a, b) => b.totalKm - a.totalKm),
+      tripDetails,
+    };
+  }
+
+  // --- VEHICLE TRAVEL & ROUTE HISTORY ---
+  async getVehicleTravelHistory(vehicleQuery: string): Promise<VehicleTravelHistory | null> {
+    const q = vehicleQuery.trim().toLowerCase().replace(/[\s-]/g, '');
+    const vehicle = this.vehicles.find(
+      (v) =>
+        v.id === vehicleQuery ||
+        v.registration_number.toLowerCase().replace(/[\s-]/g, '').includes(q)
+    );
+
+    if (!vehicle) return null;
+
+    const vehicleAssignments = this.assignments.filter((a) => a.vehicle_id === vehicle.id);
+    const assignmentIds = new Set(vehicleAssignments.map((a) => a.id));
+    const assignmentsMap = new Map(vehicleAssignments.map((a) => [a.id, a]));
+    const driversMap = new Map(this.drivers.map((d) => [d.id, d]));
+    const routesMap = new Map(this.routes.map((r) => [r.id, r]));
+    const teamsMap = new Map(this.teams.map((t) => [t.id, t]));
+
+    const vehicleTrips = this.trips.filter((t) => assignmentIds.has(t.assignment_id));
+
+    const driverStats = new Map<string, { driver: Driver; tripsCount: number; totalKm: number }>();
+    let totalRecordedDistance = 0;
+
+    const history: VehicleTravelHistory['history'] = [];
+
+    for (const trip of vehicleTrips) {
+      const assignment = assignmentsMap.get(trip.assignment_id)!;
+      const driver = driversMap.get(assignment.driver_id);
+      const route = assignment.route_id ? routesMap.get(assignment.route_id) : null;
+      const team = assignment.team_id ? teamsMap.get(assignment.team_id) : null;
+
+      const dist =
+        trip.end_odometer !== null &&
+        trip.end_odometer !== undefined &&
+        trip.start_odometer !== null &&
+        trip.start_odometer !== undefined
+          ? Math.max(0, trip.end_odometer - trip.start_odometer)
+          : 0;
+
+      totalRecordedDistance += dist;
+
+      if (driver) {
+        if (!driverStats.has(driver.id)) {
+          driverStats.set(driver.id, {
+            driver,
+            tripsCount: 0,
+            totalKm: 0,
+          });
+        }
+        const stat = driverStats.get(driver.id)!;
+        stat.tripsCount += 1;
+        stat.totalKm += dist;
+      }
+
+      history.push({
+        tripId: trip.id,
+        dutyDate: assignment.duty_date,
+        driverName: driver?.full_name || 'Unassigned',
+        driverPhone: driver?.phone || '',
+        destination: trip.actual_destination || route?.name || 'Local Transit',
+        routeName: route ? `${route.code} — ${route.name}` : 'Direct Transit',
+        teamName: team?.name || 'General Operations',
+        startOdo: trip.start_odometer,
+        endOdo: trip.end_odometer,
+        distance: dist,
+        notes: trip.driver_notes || assignment.notes,
+        status: trip.status,
+      });
+    }
+
+    // Sort newest date first
+    history.sort((a, b) => b.dutyDate.localeCompare(a.dutyDate));
+
+    return {
+      vehicle,
+      totalRecordedDistance: Math.round(totalRecordedDistance * 10) / 10,
+      tripsCount: vehicleTrips.length,
+      uniqueDrivers: Array.from(driverStats.values()).sort((a, b) => b.totalKm - a.totalKm),
+      history,
+    };
   }
 
   async updateDriver(id: string, updates: Partial<Driver>): Promise<Driver> {
@@ -797,15 +1238,346 @@ class DataRepository {
     return [...this.auditLogs];
   }
 
-  // --- RAW DATA FOR REPORT GENERATION ---
-  async getReportRawData() {
+  // --- VEHICLE SEARCH & VEHICLE DETAIL PAGE ---
+  async searchVehicles(query: string, company?: string): Promise<Vehicle[]> {
+    const q = query.trim().toLowerCase().replace(/[\s-]/g, '');
+    let list = this.vehicles;
+    if (company && company !== 'all' && company !== 'All') {
+      list = list.filter((v) => (v.company || '').toLowerCase() === company.toLowerCase());
+    }
+    if (!q) return list;
+    return list.filter((v) => {
+      const regClean = v.registration_number.toLowerCase().replace(/[\s-]/g, '');
+      const modelClean = v.make_model.toLowerCase();
+      const driversClean = (v.default_driver_names || []).join(' ').toLowerCase();
+      const routeClean = (v.route_location || '').toLowerCase();
+      return (
+        regClean.includes(q) ||
+        modelClean.includes(query.trim().toLowerCase()) ||
+        driversClean.includes(query.trim().toLowerCase()) ||
+        routeClean.includes(query.trim().toLowerCase()) ||
+        v.id === query.trim()
+      );
+    });
+  }
+
+  async getVehicleDetail(query: string, monthPrefix?: string): Promise<VehicleDetailReport | null> {
+    const q = query.trim().toLowerCase().replace(/[\s-]/g, '');
+    const vehicle = this.vehicles.find((v) => {
+      const regClean = v.registration_number.toLowerCase().replace(/[\s-]/g, '');
+      return v.id === query.trim() || regClean === q || regClean.includes(q);
+    });
+
+    if (!vehicle) return null;
+
+    const targetMonth = monthPrefix || getCurrentMonthPrefix();
+
+    // 1. All assignments for this vehicle in targetMonth
+    const vehicleAssignments = this.assignments.filter(
+      (a) =>
+        a.vehicle_id === vehicle.id &&
+        a.duty_date.startsWith(targetMonth) &&
+        a.status !== 'cancelled'
+    );
+    const assignmentIds = new Set(vehicleAssignments.map((a) => a.id));
+
+    // 2. All trips for these assignments
+    const vehicleTrips = this.trips.filter((t) => assignmentIds.has(t.assignment_id));
+    const assignmentsMap = new Map(vehicleAssignments.map((a) => [a.id, a]));
+    const driversMap = new Map(this.drivers.map((d) => [d.id, d]));
+
+    // 3. Aggregate all drivers who drove this vehicle this month
+    const driverStatsMap = new Map<
+      string,
+      {
+        driverId: string;
+        driverName: string;
+        driverPhone: string;
+        employeeCode: string;
+        dutyDates: Set<string>;
+        tripsCount: number;
+        totalKm: number;
+      }
+    >();
+
+    for (const trip of vehicleTrips) {
+      const assign = assignmentsMap.get(trip.assignment_id);
+      if (!assign) continue;
+      const driver = driversMap.get(assign.driver_id);
+      if (!driver) continue;
+
+      if (!driverStatsMap.has(driver.id)) {
+        driverStatsMap.set(driver.id, {
+          driverId: driver.id,
+          driverName: driver.full_name,
+          driverPhone: driver.phone,
+          employeeCode: driver.employee_code,
+          dutyDates: new Set<string>(),
+          tripsCount: 0,
+          totalKm: 0,
+        });
+      }
+
+      const stat = driverStatsMap.get(driver.id)!;
+      stat.dutyDates.add(assign.duty_date);
+      stat.tripsCount += 1;
+
+      const dist =
+        trip.end_odometer !== null &&
+        trip.start_odometer !== null &&
+        trip.end_odometer !== undefined &&
+        trip.start_odometer !== undefined
+          ? Math.max(0, trip.end_odometer - trip.start_odometer)
+          : 0;
+      stat.totalKm += dist;
+    }
+
+    // Also include any assignments without trips yet
+    for (const assign of vehicleAssignments) {
+      const driver = driversMap.get(assign.driver_id);
+      if (!driver) continue;
+      if (!driverStatsMap.has(driver.id)) {
+        driverStatsMap.set(driver.id, {
+          driverId: driver.id,
+          driverName: driver.full_name,
+          driverPhone: driver.phone,
+          employeeCode: driver.employee_code,
+          dutyDates: new Set<string>([assign.duty_date]),
+          tripsCount: 0,
+          totalKm: 0,
+        });
+      } else {
+        driverStatsMap.get(driver.id)!.dutyDates.add(assign.duty_date);
+      }
+    }
+
+    const driversWhoDrove: VehicleMonthlyDriverStats[] = Array.from(driverStatsMap.values())
+      .map((s) => ({
+        driverId: s.driverId,
+        driverName: s.driverName,
+        driverPhone: s.driverPhone,
+        employeeCode: s.employeeCode,
+        daysCount: s.dutyDates.size,
+        tripsCount: s.tripsCount,
+        totalKm: Math.round(s.totalKm * 10) / 10,
+        dates: Array.from(s.dutyDates).sort(),
+      }))
+      .sort((a, b) => b.totalKm - a.totalKm || b.daysCount - a.daysCount);
+
+    // 4. Expenses for the vehicle for this month
+    const vehicleExpenses = this.expenses
+      .filter((e) => e.vehicle_id === vehicle.id && e.date.startsWith(targetMonth))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    let fuelTotal = 0;
+    let fuelLitresTotal = 0;
+    let tollTotal = 0;
+    let maintenanceTotal = 0;
+    let otherTotal = 0;
+
+    for (const exp of vehicleExpenses) {
+      const amt = Number(exp.amount) || 0;
+      if (exp.expense_type === 'Fuel') {
+        fuelTotal += amt;
+        fuelLitresTotal += Number(exp.litres) || 0;
+      } else if (exp.expense_type === 'Toll') {
+        tollTotal += amt;
+      } else if (exp.expense_type === 'Maintenance') {
+        maintenanceTotal += amt;
+      } else {
+        otherTotal += amt;
+      }
+    }
+
+    const grandTotal = fuelTotal + tollTotal + maintenanceTotal + otherTotal;
+
+    const entriesWithDetails: ExpenseWithDetails[] = vehicleExpenses.map((e) => ({
+      ...e,
+      vehicle,
+      driver: driversMap.get(e.driver_id) || null,
+    }));
+
+    const distinctDates = new Set(vehicleAssignments.map((a) => a.duty_date));
+    const totalMonthKm = driversWhoDrove.reduce((sum, d) => sum + d.totalKm, 0);
+
     return {
-      assignments: this.assignments,
-      trips: this.trips,
+      vehicle,
+      selectedMonth: targetMonth,
+      company: vehicle.company || 'Delhivery',
+      routeLocation: vehicle.route_location || 'Ad-hoc',
+      defaultDrivers: (vehicle.default_driver_names || []).join(', ') || 'Unassigned',
+      driversWhoDrove,
+      totalDriversCount: driversWhoDrove.length,
+      totalDaysOperated: distinctDates.size,
+      totalTripsCount: vehicleTrips.length,
+      totalMonthKm: Math.round(totalMonthKm * 10) / 10,
+      expenses: {
+        totals: {
+          fuel: fuelTotal,
+          fuelLitres: Math.round(fuelLitresTotal * 10) / 10,
+          toll: tollTotal,
+          maintenance: maintenanceTotal,
+          other: otherTotal,
+          grandTotal,
+        },
+        entries: entriesWithDetails,
+      },
+    };
+  }
+
+  // --- EXPENSE MANAGEMENT ---
+  async getExpenses(filter?: {
+    vehicleId?: string;
+    driverId?: string;
+    monthPrefix?: string;
+  }): Promise<ExpenseWithDetails[]> {
+    const vehiclesMap = new Map(this.vehicles.map((v) => [v.id, v]));
+    const driversMap = new Map(this.drivers.map((d) => [d.id, d]));
+
+    let list = this.expenses;
+
+    if (filter?.vehicleId) {
+      list = list.filter((e) => e.vehicle_id === filter.vehicleId);
+    }
+    if (filter?.driverId) {
+      list = list.filter((e) => e.driver_id === filter.driverId);
+    }
+    if (filter?.monthPrefix) {
+      list = list.filter((e) => e.date.startsWith(filter.monthPrefix!));
+    }
+
+    // Sort newest first
+    const sorted = [...list].sort((a, b) => b.date.localeCompare(a.date));
+
+    return sorted.map((e) => ({
+      ...e,
+      vehicle: vehiclesMap.get(e.vehicle_id) || null,
+      driver: driversMap.get(e.driver_id) || null,
+    }));
+  }
+
+  async createExpense(data: {
+    vehicle_id: string;
+    driver_id: string;
+    expense_type: ExpenseType;
+    amount: number;
+    date?: string;
+    litres?: number | null;
+    note?: string | null;
+    bill_photo_url?: string | null;
+  }): Promise<Expense> {
+    const newExpense: Expense = {
+      id: `exp-${Date.now()}`,
+      vehicle_id: data.vehicle_id,
+      driver_id: data.driver_id,
+      expense_type: data.expense_type,
+      amount: Number(data.amount) || 0,
+      date: data.date || getTodayDateString(),
+      litres: data.expense_type === 'Fuel' ? Number(data.litres) || null : null,
+      note: data.note || null,
+      bill_photo_url: data.bill_photo_url || null,
+      created_at: new Date().toISOString(),
+    };
+
+    this.expenses.unshift(newExpense);
+    this.persist();
+    return newExpense;
+  }
+
+  async getDriverExpenses(
+    driverPhoneOrId: string,
+    monthPrefix?: string
+  ): Promise<ExpenseWithDetails[]> {
+    const driver = this.drivers.find(
+      (d) =>
+        d.id === driverPhoneOrId ||
+        d.phone.replace(/[\s-]/g, '') === driverPhoneOrId.replace(/[\s-]/g, '') ||
+        d.profile_id === driverPhoneOrId
+    );
+    if (!driver) return [];
+    return this.getExpenses({ driverId: driver.id, monthPrefix });
+  }
+
+  async assignDriverAdhocVehicle(
+    driverPhoneOrId: string,
+    vehicleId: string,
+    routeLocation?: string
+  ): Promise<AssignmentWithDetails> {
+    const driver = this.drivers.find(
+      (d) =>
+        d.id === driverPhoneOrId ||
+        d.phone.replace(/[\s-]/g, '') === driverPhoneOrId.replace(/[\s-]/g, '') ||
+        d.profile_id === driverPhoneOrId
+    );
+    if (!driver) throw new Error('Driver not found');
+
+    const vehicle = this.vehicles.find((v) => v.id === vehicleId);
+    if (!vehicle) throw new Error('Vehicle not found');
+
+    const todayStr = getTodayDateString();
+
+    let assign = this.assignments.find(
+      (a) => a.driver_id === driver.id && a.duty_date === todayStr && a.status !== 'cancelled'
+    );
+
+    if (assign) {
+      assign.vehicle_id = vehicle.id;
+      if (routeLocation) {
+        assign.notes = routeLocation;
+      }
+      assign.updated_at = new Date().toISOString();
+    } else {
+      const team =
+        this.teams.find((t) =>
+          t.name.toLowerCase().includes((vehicle.company || '').toLowerCase())
+        ) || this.teams[0];
+      const route = this.routes.find((r) => r.team_id === team?.id) || this.routes[0];
+
+      assign = {
+        id: `assign-${Date.now()}`,
+        duty_date: todayStr,
+        driver_id: driver.id,
+        vehicle_id: vehicle.id,
+        route_id: route?.id || null,
+        team_id: team?.id || null,
+        planned_start_time: '08:00',
+        planned_end_time: '17:00',
+        status: 'confirmed',
+        driver_confirmed_at: new Date().toISOString(),
+        notes: routeLocation || vehicle.route_location || 'Ad-hoc corridor run',
+        created_by: driver.profile_id || this.currentUserId,
+        updated_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.assignments.unshift(assign);
+    }
+
+    this.persist();
+    const detailed = await this.getAssignmentById(assign.id);
+    return detailed!;
+  }
+
+  // --- RAW DATA FOR REPORT GENERATION ---
+  async getReportRawData(company?: string) {
+    let vList = this.vehicles;
+    if (company && company !== 'all' && company !== 'All') {
+      vList = vList.filter((v) => (v.company || '').toLowerCase() === company.toLowerCase());
+    }
+    const vIds = new Set(vList.map((v) => v.id));
+    const filteredAssignments = this.assignments.filter((a) => vIds.has(a.vehicle_id));
+    const aIds = new Set(filteredAssignments.map((a) => a.id));
+    const filteredTrips = this.trips.filter((t) => aIds.has(t.assignment_id));
+    const filteredExpenses = this.expenses.filter((e) => vIds.has(e.vehicle_id));
+
+    return {
+      assignments: filteredAssignments,
+      trips: filteredTrips,
       drivers: this.drivers,
-      vehicles: this.vehicles,
+      vehicles: vList,
       routes: this.routes,
       teams: this.teams,
+      expenses: filteredExpenses,
     };
   }
 }

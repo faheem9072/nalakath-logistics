@@ -13,13 +13,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Nalakath Logistics — Fleet & Duty Management Operations',
+  title: 'നാലകത്ത് ലോജിസ്റ്റിക്സ് — Nalakath Logistics',
   description:
     'Official Fleet Management & Duty Operations Platform for Nalakath Logistics (Since 1998). Vehicle dispatch, duty scheduling, driver trips, and live odometer tracking.',
+  manifest: '/manifest.json',
   icons: {
     icon: '/nalakath-logo.svg',
+    apple: '/nalakath-logo.svg',
+  },
+  themeColor: '#0f172a',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'നാലകത്ത്',
   },
 };
+
+import { AppProviders } from '@/components/providers/AppProviders';
 
 export default function RootLayout({
   children,
@@ -32,7 +42,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans bg-slate-50 text-slate-900">
-        {children}
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

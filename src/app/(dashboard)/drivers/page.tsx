@@ -10,52 +10,34 @@ import { Modal } from '@/components/ui/Modal';
 import { Alert } from '@/components/ui/Alert';
 import { StatusBadge } from '@/components/ui/Badge';
 import { dataRepo } from '@/lib/data-service';
-import { Driver, DriverStatus, Route } from '@/types/database';
-import { Plus, Search, Users, Pencil } from 'lucide-react';
+import { Driver, DriverStatus } from '@/types/database';
+import { SimpleAddDriverModal } from '@/components/drivers/SimpleAddDriverModal';
+import { useLanguage } from '@/lib/i18n/LanguageContext';
+import { Plus, Search, Users, Pencil, Phone, Trash2 } from 'lucide-react';
 
 export default function DriversPage() {
+  const { t } = useLanguage();
   const [drivers, setDrivers] = useState<Driver[]>([]);
-  const [routes, setRoutes] = useState<Route[]>([]);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Add Modal
+  // Add Driver Modal
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [empCode, setEmpCode] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [licenseNo, setLicenseNo] = useState('');
-  const [licenseExp, setLicenseExp] = useState('2028-12-31');
-  const [isFixedRoute, setIsFixedRoute] = useState(false);
-  const [defaultRouteId, setDefaultRouteId] = useState('');
-  const [notes, setNotes] = useState('');
-  const [modalError, setModalError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Edit Modal
+  // Edit Driver Modal
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
-  const [editEmpCode, setEditEmpCode] = useState('');
   const [editFullName, setEditFullName] = useState('');
   const [editPhone, setEditPhone] = useState('');
-  const [editLicenseNo, setEditLicenseNo] = useState('');
-  const [editLicenseExp, setEditLicenseExp] = useState('2028-12-31');
-  const [editIsFixedRoute, setEditIsFixedRoute] = useState(false);
-  const [editDefaultRouteId, setEditDefaultRouteId] = useState('');
   const [editStatus, setEditStatus] = useState<DriverStatus>('active');
-  const [editNotes, setEditNotes] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [dList, rList] = await Promise.all([
-        dataRepo.getDrivers(),
-        dataRepo.getRoutes(),
-      ]);
+      const dList = await dataRepo.getDrivers();
       setDrivers(dList);
-      setRoutes(rList);
     } catch (err) {
       console.error(err);
     } finally {
@@ -69,15 +51,9 @@ export default function DriversPage() {
 
   const handleOpenEdit = (d: Driver) => {
     setEditingDriver(d);
-    setEditEmpCode(d.employee_code);
     setEditFullName(d.full_name);
     setEditPhone(d.phone);
-    setEditLicenseNo(d.license_number);
-    setEditLicenseExp(d.license_expiry);
-    setEditIsFixedRoute(d.is_fixed_route);
-    setEditDefaultRouteId(d.default_route_id || '');
     setEditStatus(d.status);
-    setEditNotes(d.notes || '');
     setEditError(null);
   };
 
@@ -88,51 +64,16 @@ export default function DriversPage() {
     setIsEditSubmitting(true);
     try {
       await dataRepo.updateDriver(editingDriver.id, {
-        employee_code: editEmpCode.trim().toUpperCase(),
         full_name: editFullName.trim(),
         phone: editPhone.trim(),
-        license_number: editLicenseNo.trim(),
-        license_expiry: editLicenseExp,
-        is_fixed_route: editIsFixedRoute,
-        default_route_id: editIsFixedRoute && editDefaultRouteId ? editDefaultRouteId : null,
         status: editStatus,
-        notes: editNotes.trim() || null,
       });
       setEditingDriver(null);
-      loadData();
+      await loadData();
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : 'Failed to update driver');
     } finally {
       setIsEditSubmitting(false);
-    }
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setModalError(null);
-    setIsSubmitting(true);
-    try {
-      await dataRepo.createDriver({
-        employee_code: empCode.trim().toUpperCase(),
-        full_name: fullName.trim(),
-        phone: phone.trim(),
-        license_number: licenseNo.trim(),
-        license_expiry: licenseExp,
-        is_fixed_route: isFixedRoute,
-        default_route_id: isFixedRoute && defaultRouteId ? defaultRouteId : null,
-        status: 'active',
-        notes: notes.trim() || null,
-      });
-      setIsAddOpen(false);
-      setEmpCode('');
-      setFullName('');
-      setPhone('');
-      setLicenseNo('');
-      loadData();
-    } catch (err: unknown) {
-      setModalError(err instanceof Error ? err.message : 'Failed to register driver');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -146,20 +87,27 @@ export default function DriversPage() {
 
     try {
       await dataRepo.updateDriver(driver.id, { status: nextStatus });
-      loadData();
+      await loadData();
     } catch (err) {
       console.error(err);
     }
   };
 
-  const routesMap = new Map(routes.map((r) => [r.id, r.name]));
+  const handleDelete = async (driver: Driver) => {
+    if (!confirm(`${t('confirmDeleteDriver')} "${driver.full_name}"?`)) return;
+    try {
+      await dataRepo.deleteDriver(driver.id);
+      await loadData();
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const filtered = drivers.filter((d) => {
     if (statusFilter !== 'all' && d.status !== statusFilter) return false;
     if (
       search &&
       !d.full_name.toLowerCase().includes(search.toLowerCase()) &&
-      !d.employee_code.toLowerCase().includes(search.toLowerCase()) &&
       !d.phone.includes(search)
     ) {
       return false;
@@ -169,356 +117,266 @@ export default function DriversPage() {
 
   return (
     <PageContainer
-      title="Driver Roster"
-      subtitle="Driver qualifications, license validity, route specializations, and operational statuses."
+      title={t('driversTitle')}
+      subtitle={t('driversSubtitle')}
       action={
         <Button
           variant="primary"
+          size="sm"
+          className="font-bold text-xs py-2 w-full sm:w-auto"
           onClick={() => setIsAddOpen(true)}
           leftIcon={<Plus className="w-4 h-4" />}
         >
-          Add Driver
+          {t('addDriverModalTitle')}
         </Button>
       }
     >
-      {/* Search & Filter Bar */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="relative w-full sm:w-72">
+      {/* Search & Filter Bar — Mobile Touch Friendly */}
+      <div className="bg-white p-3 sm:p-4 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-2.5">
+        <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search name, code, or phone..."
+            placeholder={t('searchDriversPlaceholder')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-9 pr-3 py-2 text-xs sm:text-sm font-semibold rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-slate-50/50"
           />
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+            className="w-full sm:w-auto text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
           >
-            <option value="all">All Statuses ({drivers.length})</option>
-            <option value="active">Active Only</option>
-            <option value="on_leave">On Leave Only</option>
-            <option value="inactive">Inactive Only</option>
+            <option value="all">{t('allStatuses')} ({drivers.length})</option>
+            <option value="active">{t('activeOnly')}</option>
+            <option value="on_leave">{t('onLeaveOnly')}</option>
+            <option value="inactive">{t('inactiveOnly')}</option>
           </select>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="py-16 text-center text-sm text-slate-400 animate-pulse">
-          Loading driver roster...
+        <div className="py-12 text-center text-xs text-slate-400 animate-pulse">
+          {t('loadingDrivers')}
         </div>
       ) : filtered.length === 0 ? (
         <Card>
-          <CardContent className="p-12 text-center text-slate-500 text-sm">
-            <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            No drivers match your search query.
+          <CardContent className="p-8 text-center text-slate-500 text-xs space-y-2">
+            <Users className="w-10 h-10 text-slate-300 mx-auto" />
+            <p>{t('noDriversFound')}</p>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => setIsAddOpen(true)}
+              leftIcon={<Plus className="w-4 h-4" />}
+            >
+              {t('addNewDriverBtn')}
+            </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
-                <tr>
-                  <th className="px-5 py-3.5">Code</th>
-                  <th className="px-5 py-3.5">Driver Name</th>
-                  <th className="px-5 py-3.5">Phone (Auth)</th>
-                  <th className="px-5 py-3.5">Commercial License</th>
-                  <th className="px-5 py-3.5">Route Mode</th>
-                  <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                {filtered.map((d) => (
-                  <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="px-5 py-4 font-mono font-bold text-slate-900">
-                      {d.employee_code}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="font-semibold text-xs text-slate-900">{d.full_name}</div>
-                      {d.notes && (
-                        <div className="text-[11px] text-slate-400 truncate max-w-xs">{d.notes}</div>
-                      )}
-                    </td>
-                    <td className="px-5 py-4 font-mono text-xs text-slate-600">
-                      {d.phone}
-                    </td>
-                    <td className="px-5 py-4 text-xs font-mono">
-                      <div>{d.license_number}</div>
-                      <div className="text-[10px] text-slate-400">Exp: {d.license_expiry}</div>
-                    </td>
-                    <td className="px-5 py-4 text-xs">
-                      {d.is_fixed_route ? (
-                        <div>
-                          <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded text-[11px]">
-                            Fixed Route
-                          </span>
-                          {d.default_route_id && (
-                            <div className="text-[10px] text-slate-500 mt-0.5 truncate max-w-xs">
-                              {routesMap.get(d.default_route_id) || 'Default Route'}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-500 font-medium">Daily Flexible</span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4">
-                      <StatusBadge status={d.status} size="sm" />
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs py-1"
-                          onClick={() => handleOpenEdit(d)}
-                          leftIcon={<Pencil className="w-3 h-3" />}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs py-1"
-                          onClick={() => handleToggleStatus(d)}
-                        >
-                          {d.status === 'active'
-                            ? 'Set Leave'
-                            : d.status === 'on_leave'
-                            ? 'Deactivate'
-                            : 'Activate'}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <>
+          {/* MOBILE VIEW: Driver Cards (< 640px) */}
+          <div className="sm:hidden space-y-2.5">
+            {filtered.map((d) => (
+              <div
+                key={d.id}
+                className="bg-white p-3.5 rounded-xl border border-slate-200/90 shadow-2xs space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-black flex items-center justify-center text-sm shrink-0">
+                      {d.full_name.slice(0, 2).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="font-black text-sm text-slate-900">{d.full_name}</div>
+                      <div className="text-[11px] font-mono text-slate-500">{d.phone}</div>
+                    </div>
+                  </div>
+                  <StatusBadge status={d.status} size="sm" />
+                </div>
+
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                  <a
+                    href={`tel:${d.phone}`}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-lg text-xs font-bold shadow-xs active:scale-95"
+                  >
+                    <Phone className="w-3.5 h-3.5 fill-white" />
+                    <span>{t('callDriverBtn')}</span>
+                  </a>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs py-2 px-3 font-semibold"
+                    onClick={() => handleToggleStatus(d)}
+                  >
+                    {d.status === 'active' ? t('setLeaveBtn') : t('setActiveBtn')}
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs py-2 px-3 font-semibold"
+                    onClick={() => handleOpenEdit(d)}
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </Button>
+
+                  <button
+                    onClick={() => handleDelete(d)}
+                    title={t('deleteBtn')}
+                    className="p-2 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
+
+          {/* DESKTOP VIEW: Table (>= 640px) */}
+          <div className="hidden sm:block bg-white rounded-xl border border-slate-200/80 shadow-xs overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200/80">
+                  <tr>
+                    <th className="px-5 py-3.5">{t('driverNameLabel')}</th>
+                    <th className="px-5 py-3.5">{t('mobileNumberLabel')}</th>
+                    <th className="px-5 py-3.5">{t('statusTh')}</th>
+                    <th className="px-5 py-3.5 text-right">{t('editDriverModalTitle')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {filtered.map((d) => (
+                    <tr key={d.id} className="hover:bg-slate-50/80 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center text-xs shrink-0">
+                            {d.full_name.slice(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-bold text-sm text-slate-900">{d.full_name}</div>
+                            <div className="text-[11px] text-slate-400 font-mono">
+                              {d.employee_code}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm font-semibold text-slate-800">
+                            {d.phone}
+                          </span>
+                          <a
+                            href={`tel:${d.phone}`}
+                            title="Call Driver"
+                            className="p-1 rounded bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-600 transition-colors"
+                          >
+                            <Phone className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge status={d.status} size="sm" />
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs py-1"
+                            onClick={() => handleToggleStatus(d)}
+                          >
+                            {d.status === 'active'
+                              ? t('setLeaveBtn')
+                              : t('setActiveBtn')}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs py-1"
+                            onClick={() => handleOpenEdit(d)}
+                            leftIcon={<Pencil className="w-3 h-3" />}
+                          >
+                            {t('editBtn')}
+                          </Button>
+                          <button
+                            onClick={() => handleDelete(d)}
+                            title={t('deleteBtn')}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
-      {/* Add Driver Modal */}
-      <Modal
+      {/* Simple Add Driver Modal (Name & Phone only) */}
+      <SimpleAddDriverModal
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
-        title="Add Transport Driver"
-        description="Register a driver for daily duty allocation and SMS OTP mobile portal access."
-        maxWidth="md"
-      >
-        <form onSubmit={handleCreate} className="space-y-4">
-          {modalError && <Alert variant="danger">{modalError}</Alert>}
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Employee Code"
-              placeholder="EMP-1009"
-              value={empCode}
-              onChange={(e) => setEmpCode(e.target.value.toUpperCase())}
-              required
-              autoFocus
-            />
-            <Input
-              label="Full Name"
-              placeholder="Driver Full Name"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Mobile Phone (SMS OTP)"
-              type="tel"
-              placeholder="+919400998877"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              required
-            />
-            <Input
-              label="License Number"
-              placeholder="KL0720230009988"
-              value={licenseNo}
-              onChange={(e) => setLicenseNo(e.target.value)}
-              required
-            />
-          </div>
-
-          <Input
-            label="License Expiry Date"
-            type="date"
-            value={licenseExp}
-            onChange={(e) => setLicenseExp(e.target.value)}
-            required
-          />
-
-          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={isFixedRoute}
-                onChange={(e) => setIsFixedRoute(e.target.checked)}
-                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
-              />
-              <span>Fixed-Route Driver (Regular assigned corridor)</span>
-            </label>
-
-            {isFixedRoute && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Default Route Corridor
-                </label>
-                <Select
-                  value={defaultRouteId}
-                  onChange={(e) => setDefaultRouteId(e.target.value)}
-                >
-                  <option value="">Select primary corridor...</option>
-                  {routes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.code} — {r.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-          </div>
-
-          <Input
-            label="Notes"
-            placeholder="E.g., Airport security clearance, night shifts only..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsAddOpen(false)}
-              disabled={isSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" isLoading={isSubmitting}>
-              Register Driver
-            </Button>
-          </div>
-        </form>
-      </Modal>
+        onSuccess={loadData}
+      />
 
       {/* Edit Driver Modal */}
       <Modal
         isOpen={!!editingDriver}
         onClose={() => setEditingDriver(null)}
-        title="Edit Transport Driver"
-        description="Update driver credentials, contact phone, license validity, and assigned corridor."
-        maxWidth="md"
+        title={t('editDriverModalTitle')}
+        description={t('editDriverModalDesc')}
+        maxWidth="sm"
       >
         <form onSubmit={handleUpdate} className="space-y-4">
           {editError && <Alert variant="danger">{editError}</Alert>}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+              {t('driverNameLabel')} <span className="text-rose-500">*</span>
+            </label>
             <Input
-              label="Employee Code"
-              placeholder="EMP-1001"
-              value={editEmpCode}
-              onChange={(e) => setEditEmpCode(e.target.value.toUpperCase())}
-              required
-            />
-            <Input
-              label="Full Name"
-              placeholder="Driver Full Name"
               value={editFullName}
               onChange={(e) => setEditFullName(e.target.value)}
               required
+              autoFocus
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+              {t('mobileNumberLabel')} <span className="text-rose-500">*</span>
+            </label>
             <Input
-              label="Mobile Number (Auth)"
-              placeholder="+919400112233"
+              type="tel"
               value={editPhone}
               onChange={(e) => setEditPhone(e.target.value)}
               required
             />
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Duty Status
-              </label>
-              <Select
-                value={editStatus}
-                onChange={(e) => setEditStatus(e.target.value as DriverStatus)}
-              >
-                <option value="active">Active (On Roster)</option>
-                <option value="on_leave">On Leave</option>
-                <option value="inactive">Inactive</option>
-              </Select>
-            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Commercial License Number"
-              placeholder="KL0720180004123"
-              value={editLicenseNo}
-              onChange={(e) => setEditLicenseNo(e.target.value.toUpperCase())}
-              required
-            />
-            <Input
-              label="License Expiry Date"
-              type="date"
-              value={editLicenseExp}
-              onChange={(e) => setEditLicenseExp(e.target.value)}
-              required
-            />
-          </div>
-
-          <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-3">
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-800 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={editIsFixedRoute}
-                onChange={(e) => setEditIsFixedRoute(e.target.checked)}
-                className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 border-slate-300"
-              />
-              <span>Fixed-Route Driver (Regular assigned corridor)</span>
+          <div>
+            <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+              {t('dutyStatusLabel')}
             </label>
-
-            {editIsFixedRoute && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
-                  Default Route Corridor
-                </label>
-                <Select
-                  value={editDefaultRouteId}
-                  onChange={(e) => setEditDefaultRouteId(e.target.value)}
-                >
-                  <option value="">Select primary corridor...</option>
-                  {routes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.code} — {r.name}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
+            <Select
+              value={editStatus}
+              onChange={(e) => setEditStatus(e.target.value as DriverStatus)}
+            >
+              <option value="active">{t('activeOnly')}</option>
+              <option value="on_leave">{t('onLeaveOnly')}</option>
+              <option value="inactive">{t('inactiveOnly')}</option>
+            </Select>
           </div>
-
-          <Input
-            label="Notes"
-            placeholder="E.g., Airport security clearance, night shifts only..."
-            value={editNotes}
-            onChange={(e) => setEditNotes(e.target.value)}
-          />
 
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
             <Button
@@ -527,10 +385,10 @@ export default function DriversPage() {
               onClick={() => setEditingDriver(null)}
               disabled={isEditSubmitting}
             >
-              Cancel
+              {t('cancelBtn')}
             </Button>
             <Button type="submit" variant="primary" isLoading={isEditSubmitting}>
-              Save Changes
+              {t('saveBtn')}
             </Button>
           </div>
         </form>

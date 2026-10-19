@@ -7,7 +7,49 @@ import {
   Team,
   AssignmentEvent,
   Profile,
+  Expense,
 } from './database';
+
+export interface ExpenseWithDetails extends Expense {
+  vehicle?: Vehicle | null;
+  driver?: Driver | null;
+}
+
+export interface VehicleMonthlyDriverStats {
+  driverId: string;
+  driverName: string;
+  driverPhone: string;
+  employeeCode: string;
+  daysCount: number;
+  tripsCount: number;
+  totalKm: number;
+  dates: string[];
+}
+
+export interface VehicleDetailReport {
+  vehicle: Vehicle;
+  selectedMonth: string; // YYYY-MM
+  company: string;
+  routeLocation: string;
+  defaultDrivers: string;
+  driversWhoDrove: VehicleMonthlyDriverStats[];
+  totalDriversCount: number;
+  totalDaysOperated: number;
+  totalTripsCount: number;
+  totalMonthKm: number;
+  expenses: {
+    totals: {
+      fuel: number;
+      fuelLitres: number;
+      toll: number;
+      maintenance: number;
+      other: number;
+      grandTotal: number;
+    };
+    entries: ExpenseWithDetails[];
+  };
+}
+
 
 export interface AssignmentWithDetails extends Assignment {
   driver: Driver;
@@ -70,6 +112,7 @@ export interface VehicleReportItem {
   vehicleType: string;
   currentOdometer: number;
   status: string;
+  company?: string;
   driversCount: number;
   driversUsed: string[];
   dutyDatesCount: number;
