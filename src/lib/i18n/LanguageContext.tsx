@@ -14,13 +14,21 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLangState] = useState<Language>('ml'); // Default to Malayalam as requested, easily toggleable to English
+  const [lang, setLangState] = useState<Language>('en'); // Default to English for desktop and clean initial view
 
   useEffect(() => {
     try {
+      const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 768;
       const saved = localStorage.getItem('fleetflow_lang') as Language;
-      if (saved && (saved === 'en' || saved === 'ml')) {
+
+      if (isDesktop) {
+        // Desktop should display in English by default
+        setLangState('en');
+      } else if (saved && (saved === 'en' || saved === 'ml')) {
         setLangState(saved);
+      } else {
+        // Mobile default
+        setLangState('en');
       }
     } catch (e) {
       console.warn('Failed to read language preference:', e);

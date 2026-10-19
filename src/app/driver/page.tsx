@@ -46,6 +46,7 @@ export default function DriverPortalPage() {
   const { lang, t } = useLanguage();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [driverRecord, setDriverRecord] = useState<Driver | null>(null);
+  const [availableDrivers, setAvailableDrivers] = useState<Driver[]>([]);
   const [assignments, setAssignments] = useState<AssignmentWithDetails[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [driverExpenses, setDriverExpenses] = useState<ExpenseWithDetails[]>([]);
@@ -86,22 +87,29 @@ export default function DriverPortalPage() {
       const vList = await dataRepo.getVehicles();
       setVehicles(vList);
 
-      if (p) {
-        // Fetch driver record
-        const allDrivers = await dataRepo.getDrivers();
-        const dRec = allDrivers.find(
-          (d) =>
-            d.phone.replace(/[\s-]/g, '') === p.phone.replace(/[\s-]/g, '') ||
-            d.profile_id === p.id
-        );
-        setDriverRecord(dRec || null);
+      const allDrivers = await dataRepo.getDrivers();
+      setAvailableDrivers(allDrivers);
 
-        // Fetch driver duties
-        const list = await dataRepo.getDriverAssignments(p.phone);
+      let dRec = allDrivers.find(
+        (d) =>
+          (p && d.phone.replace(/[\s-]/g, '') === p.phone.replace(/[\s-]/g, '')) ||
+          (p && d.profile_id === p.id)
+      );
+
+      // If current user is owner or has no driver record, default to Refnise or first active driver
+      if (!dRec && allDrivers.length > 0) {
+        dRec = allDrivers.find((d) => d.full_name.toLowerCase().includes('refnise')) || allDrivers[0];
+      }
+
+      setDriverRecord(dRec || null);
+
+      if (dRec) {
+        // Fetch driver duties using this driver's phone
+        const list = await dataRepo.getDriverAssignments(dRec.phone);
         setAssignments(list);
 
         // Fetch driver's OWN expenses only
-        const expList = await dataRepo.getDriverExpenses(p.phone);
+        const expList = await dataRepo.getDriverExpenses(dRec.phone);
         setDriverExpenses(expList);
 
         // Pre-select vehicle for expense
@@ -150,12 +158,13 @@ export default function DriverPortalPage() {
 
   const handleConfirmAdhocVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!profile || !selectedAdhocVehicleId) return;
+    const targetPhone = driverRecord?.phone || profile?.phone;
+    if (!targetPhone || !selectedAdhocVehicleId) return;
     setIsAssigningVehicle(true);
     setActionError(null);
     try {
       await dataRepo.assignDriverAdhocVehicle(
-        profile.phone,
+        targetPhone,
         selectedAdhocVehicleId,
         adhocRouteLocation.trim() || 'Ad-hoc'
       );
@@ -225,10 +234,34 @@ export default function DriverPortalPage() {
                   1998
                 </span>
               </div>
-              <div className="text-[11px] text-slate-300 font-bold truncate">
-                {profile?.full_name || t('driver')}
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <select
+                  value={driverRecord?.id || ''}
+                  onChange={async (e) => {
+                    const chosen = availableDrivers.find((d) => d.id === e.target.value);
+                    if (chosen) {
+                      setDriverRecord(chosen);
+                      const list = await dataRepo.getDriverAssignments(chosen.phone);
+                      setAssignments(list);
+                      const expList = await dataRepo.getDriverExpenses(chosen.phone);
+                      setDriverExpenses(expList);
+                      if (list.length > 0 && list[0].vehicle_id) {
+                        setExpenseVehicleId(list[0].vehicle_id);
+                        setSelectedAdhocVehicleId(list[0].vehicle_id);
+                      }
+                    }
+                  }}
+                  className="bg-slate-800 text-slate-100 text-[11px] font-bold rounded px-1 py-0.5 border border-slate-700 cursor-pointer max-w-[125px] truncate focus:outline-none"
+                  title="Switch Driver"
+                >
+                  {availableDrivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.full_name}
+                    </option>
+                  ))}
+                </select>
                 {isAdhocDriver && (
-                  <span className="ml-1 text-[9px] bg-blue-900 text-blue-200 px-1.5 py-0.2 rounded font-bold">
+                  <span className="text-[9px] bg-blue-900 text-blue-200 px-1.5 py-0.2 rounded font-bold">
                     Ad-hoc
                   </span>
                 )}
@@ -319,33 +352,33 @@ export default function DriverPortalPage() {
               Loading assignment...
             </div>
           ) : assignments.length === 0 ? (
-            /* Single clean empty state */
-            <Card className="border-2 border-slate-200 shadow-xs rounded-2xl">
+            /* Single clean empty state with vehicle punch-in */
+            <Card className="border-2 border-slate-200 shadow-xs rounded-2xl bg-white">
               <CardContent className="p-6 text-center space-y-3">
                 <Truck className="w-10 h-10 text-slate-400 mx-auto" />
                 <div>
                   <h3 className="font-black text-slate-800 text-sm">
-                    {isAdhocDriver ? t('adhocDriverPickTitle') : t('noDutyAssignedDriverTitle')}
+                    {lang === 'ml'
+                      ? 'വണ്ടിയിൽ കയറുക — വണ്ടി തിരഞ്ഞെടുക്കുക'
+                      : 'Get In Vehicle — Select Vehicle & Punch'}
                   </h3>
                   <p className="text-xs text-slate-500 mt-1 max-w-xs mx-auto">
-                    {isAdhocDriver
-                      ? 'Select your rotating vehicle to start logging your trips for today.'
-                      : t('noDutyAssignedDriverDesc')}
+                    {lang === 'ml'
+                      ? 'നിങ്ങൾ ഓടിക്കാൻ പോകുന്ന വണ്ടി തിരഞ്ഞെടുത്ത് മീറ്റർ നൽകി പഞ്ച് ചെയ്യുക (Start KM നൽകുക).'
+                      : 'Choose the vehicle you are driving today, enter meter reading, and submit to punch.'}
                   </p>
                 </div>
 
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
-                  {isAdhocDriver && (
-                    <Button
-                      size="md"
-                      variant="primary"
-                      className="w-full sm:w-auto text-xs font-black bg-blue-600 hover:bg-blue-700 rounded-xl"
-                      onClick={() => setIsPickVehicleOpen(true)}
-                      leftIcon={<Car className="w-4 h-4" />}
-                    >
-                      {t('adhocDriverPickBtn')}
-                    </Button>
-                  )}
+                  <Button
+                    size="md"
+                    variant="primary"
+                    className="w-full sm:w-auto text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl py-3 px-4 shadow-md cursor-pointer"
+                    onClick={() => setIsPickVehicleOpen(true)}
+                    leftIcon={<Car className="w-4 h-4" />}
+                  >
+                    {lang === 'ml' ? '🚗 വണ്ടി തിരഞ്ഞെടുത്ത് പഞ്ച് ചെയ്യുക' : '🚗 Select Vehicle & Punch In'}
+                  </Button>
                   <a
                     href="tel:+919876543200"
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-xs transition-colors"
