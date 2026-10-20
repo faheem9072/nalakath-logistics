@@ -257,6 +257,61 @@ class DataRepository {
     return found;
   }
 
+  async loginDriverByPhone(phone: string): Promise<Profile> {
+    let cleanPhone = (phone || '').trim().replace(/[\s-]/g, '');
+    if (cleanPhone.length === 10 && !cleanPhone.startsWith('+')) {
+      cleanPhone = `+91${cleanPhone}`;
+    }
+    const last10 = cleanPhone.slice(-10);
+    if (!last10 || last10.length < 10) {
+      throw new Error('Please enter a valid 10-digit mobile number / ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക');
+    }
+
+    const matchedDriver = this.drivers.find((d) => {
+      const dClean = d.phone.replace(/[\s-]/g, '');
+      return dClean.slice(-10) === last10;
+    });
+
+    if (!matchedDriver) {
+      throw new Error(
+        `ഈ മൊബൈൽ നമ്പർ (${cleanPhone}) ഓണർ ഡാഷ്‌ബോർഡിൽ രജിസ്റ്റർ ചെയ്തിട്ടില്ല. ദയവായി ഓണർ നൽകിയ മൊബൈൽ നമ്പർ നൽകുക. / Mobile number not registered by owner.`
+      );
+    }
+
+    if (matchedDriver.status !== 'active') {
+      throw new Error('ഈ ഡ്രൈവർ അക്കൗണ്ട് താൽക്കാലികമായി നിർജ്ജീവമാക്കിയിരിക്കുന്നു. ദയവായി ഓണറെ ബന്ധപ്പെടുക. / Account inactive.');
+    }
+
+    let profile = this.profiles.find(
+      (p) =>
+        (matchedDriver.profile_id && p.id === matchedDriver.profile_id) ||
+        p.phone.replace(/[\s-]/g, '').slice(-10) === last10
+    );
+
+    if (!profile) {
+      profile = {
+        id: `profile-${matchedDriver.id}`,
+        phone: matchedDriver.phone,
+        full_name: matchedDriver.full_name,
+        role: 'driver',
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.profiles.push(profile);
+    } else {
+      profile.role = 'driver';
+      profile.full_name = matchedDriver.full_name;
+      profile.phone = matchedDriver.phone;
+      profile.is_active = true;
+    }
+
+    matchedDriver.profile_id = profile.id;
+    this.currentUserId = profile.id;
+    this.persist();
+    return profile;
+  }
+
   async loginDriverByNameAndPhone(name: string, phone: string): Promise<Profile> {
     const cleanName = (name || '').trim();
     if (!cleanName) {
@@ -676,7 +731,11 @@ class DataRepository {
     const assign = this.assignments.find((a) => a.id === assignmentId);
     if (!assign) throw new Error('Assignment not found');
     if (assign.status !== 'scheduled') {
-      throw new Error(`Cannot confirm duty with status ${assign.status}`);
+      if (!assign.driver_confirmed_at) {
+        assign.driver_confirmed_at = new Date().toISOString();
+        this.persist();
+      }
+      return assign;
     }
 
     assign.status = 'confirmed';
@@ -709,8 +768,8 @@ class DataRepository {
   }): Promise<Trip> {
     const assign = this.assignments.find((a) => a.id === params.assignmentId);
     if (!assign) throw new Error('Assignment not found');
-    if (assign.status === 'completed' || assign.status === 'cancelled') {
-      throw new Error(`Cannot start trip on an assignment that is ${assign.status}`);
+    if (assign.status === 'cancelled') {
+      throw new Error(`Cannot start trip on an assignment that is cancelled`);
     }
 
     if (params.startOdometer < 0) {
@@ -739,8 +798,19 @@ class DataRepository {
 
     this.trips.push(newTrip);
 
+    // Reopen assignment if completed or mark in_progress
     assign.status = 'in_progress';
     assign.updated_at = new Date().toISOString();
+
+    // Sync vehicle's current odometer and set active
+    const vehicle = this.vehicles.find((v) => v.id === assign.vehicle_id);
+    if (vehicle) {
+      if (params.startOdometer > vehicle.current_odometer) {
+        vehicle.current_odometer = params.startOdometer;
+      }
+      vehicle.status = 'active';
+      vehicle.updated_at = new Date().toISOString();
+    }
 
     this.events.unshift({
       id: `evt-${Date.now()}`,
@@ -760,11 +830,131 @@ class DataRepository {
     return newTrip;
   }
 
+  async startTripForDriver(params: {
+    driverPhoneOrId: string;
+    vehicleId: string;
+    startOdometer: number;
+    destination?: string | null;
+    notes?: string | null;
+  }): Promise<Trip> {
+    const driver = this.drivers.find(
+      (d) =>
+        d.id === params.driverPhoneOrId ||
+        d.phone.replace(/[\s-]/g, '') === params.driverPhoneOrId.replace(/[\s-]/g, '') ||
+        d.profile_id === params.driverPhoneOrId
+    );
+    if (!driver) throw new Error('Driver not found');
+
+    const vehicle = this.vehicles.find((v) => v.id === params.vehicleId);
+    if (!vehicle) throw new Error('Vehicle not found');
+
+    const todayStr = getTodayDateString();
+
+    // Find today's assignment for this driver and vehicle
+    let assign = this.assignments.find(
+      (a) => a.driver_id === driver.id && a.duty_date === todayStr && a.status !== 'cancelled'
+    );
+
+    if (!assign) {
+      const team =
+        this.teams.find((t) =>
+          t.name.toLowerCase().includes((vehicle.company || '').toLowerCase())
+        ) || this.teams[0];
+      const route = this.routes.find((r) => r.team_id === team?.id) || this.routes[0];
+
+      assign = {
+        id: `assign-${Date.now()}`,
+        duty_date: todayStr,
+        driver_id: driver.id,
+        vehicle_id: vehicle.id,
+        route_id: route?.id || null,
+        team_id: team?.id || null,
+        planned_start_time: '08:00',
+        planned_end_time: '17:00',
+        status: 'in_progress',
+        driver_confirmed_at: new Date().toISOString(),
+        notes: params.destination || vehicle.route_location || 'Daily Duty Corridor',
+        created_by: driver.profile_id || this.currentUserId,
+        updated_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      this.assignments.unshift(assign);
+    } else {
+      assign.vehicle_id = vehicle.id;
+      assign.status = 'in_progress';
+      assign.driver_confirmed_at = assign.driver_confirmed_at || new Date().toISOString();
+      if (params.destination) {
+        assign.notes = params.destination;
+      }
+      assign.updated_at = new Date().toISOString();
+    }
+
+    return this.startTrip({
+      assignmentId: assign.id,
+      startOdometer: params.startOdometer,
+      actualDestination: params.destination,
+      notes: params.notes,
+    });
+  }
+
+  async recordMaintenance(params: {
+    vehicle_id: string;
+    driver_id?: string | null;
+    amount: number;
+    issue_type: string;
+    workshop_name?: string | null;
+    date?: string;
+    bill_photo_url?: string | null;
+    set_vehicle_maintenance_status?: boolean;
+  }): Promise<Expense> {
+    const vehicle = this.vehicles.find((v) => v.id === params.vehicle_id);
+    if (!vehicle) throw new Error('Vehicle not found');
+
+    const driverId =
+      params.driver_id ||
+      vehicle.default_driver_ids?.[0] ||
+      this.drivers[0]?.id ||
+      'drv-refnise';
+
+    const noteDetails = [
+      params.issue_type,
+      params.workshop_name ? `Garage: ${params.workshop_name}` : null,
+    ]
+      .filter(Boolean)
+      .join(' — ');
+
+    const newExpense = await this.createExpense({
+      vehicle_id: vehicle.id,
+      driver_id: driverId,
+      expense_type: 'Maintenance',
+      amount: Number(params.amount) || 0,
+      date: params.date || getTodayDateString(),
+      note: noteDetails || 'Vehicle maintenance & repair',
+      bill_photo_url: params.bill_photo_url || null,
+    });
+
+    if (params.set_vehicle_maintenance_status) {
+      vehicle.status = 'maintenance';
+      vehicle.updated_at = new Date().toISOString();
+    }
+
+    this.persist();
+    return newExpense;
+  }
+
   async completeTrip(params: {
     tripId: string;
     endOdometer: number;
     notes?: string | null;
     isFinalTripOfDuty?: boolean;
+    expenses?: Array<{
+      expense_type: ExpenseType;
+      amount: number;
+      litres?: number | null;
+      note?: string | null;
+      bill_photo_url?: string | null;
+    }>;
   }): Promise<{ trip: Trip; distanceKm: number }> {
     const trip = this.trips.find((t) => t.id === params.tripId);
     if (!trip) throw new Error('Trip not found');
@@ -791,13 +981,34 @@ class DataRepository {
     }
     trip.updated_at = new Date().toISOString();
 
-    // Update vehicle odometer
+    // Update vehicle odometer and clear expenses
     const assign = this.assignments.find((a) => a.id === trip.assignment_id);
     if (assign) {
       const vehicle = this.vehicles.find((v) => v.id === assign.vehicle_id);
       if (vehicle) {
         vehicle.current_odometer = Math.max(vehicle.current_odometer, params.endOdometer);
         vehicle.updated_at = new Date().toISOString();
+      }
+
+      // Record any expenses entered before ending trip
+      if (params.expenses && params.expenses.length > 0) {
+        const todayStr = getTodayDateString();
+        for (const exp of params.expenses) {
+          if (exp.amount > 0) {
+            this.expenses.unshift({
+              id: `exp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              vehicle_id: assign.vehicle_id,
+              driver_id: assign.driver_id,
+              expense_type: exp.expense_type,
+              amount: Number(exp.amount),
+              litres: exp.litres || null,
+              date: todayStr,
+              note: exp.note || `Trip #${trip.trip_number} Expense`,
+              bill_photo_url: exp.bill_photo_url || null,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
       }
 
       const activeTripsForDuty = this.trips.filter(

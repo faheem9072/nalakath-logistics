@@ -288,17 +288,28 @@ export default function LoginPage() {
             {/* Role Notice / Admin helper */}
             <div className="pt-3 border-t border-slate-100 space-y-2">
               {loginRole === 'driver' ? (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-center space-y-1">
-                  <p className="text-xs text-slate-800 font-bold">
-                    {lang === 'ml'
-                      ? 'സുരക്ഷിതമായ ഡ്രൈവർ പ്രവേശനം'
-                      : 'Secure Driver Portal Access'}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {lang === 'ml'
-                      ? 'ഓണർ ഡാഷ്‌ബോർഡിൽ നൽകിയ ഡ്രൈവറുടെ പേരും മൊബൈൽ നമ്പറും നൽകി ലോഗിൻ ചെയ്ത് പഞ്ച് ചെയ്യുക.'
-                      : 'Each driver must sign in using their registered driver name and mobile phone number.'}
-                  </p>
+                <div className="space-y-2">
+                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block text-center">
+                    {lang === 'ml' ? '👉 ഡ്രൈവർ 1-ടാപ്പ് പ്രവേശനം (Demo / Quick Pick)' : '👉 Quick 1-Tap Driver Access'}
+                  </span>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {[
+                      { name: 'Refnise', phone: '+919400112233' },
+                      { name: 'Haneefa', phone: '+919400223344' },
+                      { name: 'Firoz', phone: '+919400334455' },
+                      { name: 'Ameer', phone: '+919400445566' },
+                    ].map((d) => (
+                      <button
+                        key={d.phone}
+                        type="button"
+                        onClick={() => handleDirectDriverLogin(d.phone)}
+                        className="p-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-slate-800 text-left cursor-pointer transition-colors"
+                      >
+                        <div className="font-bold text-emerald-900 text-xs truncate">{d.name}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">{d.phone.slice(-4)}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               ) : (
                 <div>

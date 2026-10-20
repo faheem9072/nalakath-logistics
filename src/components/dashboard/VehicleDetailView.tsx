@@ -575,7 +575,7 @@ export function VehicleDetailView({
             {/* Expense Entries Table */}
             {report.expenses.entries.length === 0 ? (
               <div className="p-8 text-center text-slate-400 text-xs">
-                {t('noExpensesThisMonth')}
+                {lang === 'ml' ? 'ഈ മാസം ചിലവുകൾ ഒന്നും രേഖപ്പെടുത്തിയിട്ടില്ല' : 'No expenses recorded this month'}
               </div>
             ) : (
               <div className="overflow-x-auto">

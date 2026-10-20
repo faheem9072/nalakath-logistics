@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/ui/Badge';
 import { dataRepo } from '@/lib/data-service';
 import { Vehicle, VehicleType, VehicleStatus, ClientCompany } from '@/types/database';
 import { VehicleDetailView } from '@/components/dashboard/VehicleDetailView';
+import { getTodayDateString } from '@/lib/mock/mock-store';
 import {
   Plus,
   Search,
@@ -24,6 +25,7 @@ import {
   Eye,
   Building2,
   X,
+  Wrench,
 } from 'lucide-react';
 
 export default function VehiclesPage() {
@@ -63,6 +65,18 @@ export default function VehiclesPage() {
   const [editError, setEditError] = useState<string | null>(null);
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
 
+  // Dedicated Record Maintenance Modal
+  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
+  const [maintVehicleId, setMaintVehicleId] = useState('');
+  const [maintIssueType, setMaintIssueType] = useState('Tyre Puncture / Replace');
+  const [maintAmount, setMaintAmount] = useState('');
+  const [maintGarage, setMaintGarage] = useState('');
+  const [maintDate, setMaintDate] = useState('');
+  const [maintPhotoUrl, setMaintPhotoUrl] = useState<string | null>(null);
+  const [maintSetStatus, setMaintSetStatus] = useState(false);
+  const [maintError, setMaintError] = useState<string | null>(null);
+  const [isSubmittingMaint, setIsSubmittingMaint] = useState(false);
+
   const loadVehicles = async () => {
     setIsLoading(true);
     try {
@@ -76,6 +90,7 @@ export default function VehiclesPage() {
   };
 
   useEffect(() => {
+    setMaintDate(getTodayDateString());
     loadVehicles();
   }, []);
 
@@ -192,13 +207,28 @@ export default function VehiclesPage() {
       title="Fleet Vehicles"
       subtitle="Complete vehicle inventory grouped by Client Company (Delhivery & Shadowfax), route assignments, and driver history."
       action={
-        <Button
-          variant="primary"
-          onClick={() => setIsAddOpen(true)}
-          leftIcon={<Plus className="w-4 h-4" />}
-        >
-          Add Vehicle
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold"
+            onClick={() => {
+              if (vehicles.length > 0) {
+                setMaintVehicleId(vehicles[0].id);
+              }
+              setIsMaintenanceModalOpen(true);
+            }}
+            leftIcon={<Wrench className="w-4 h-4 text-amber-700" />}
+          >
+            Record Maintenance
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => setIsAddOpen(true)}
+            leftIcon={<Plus className="w-4 h-4" />}
+          >
+            Add Vehicle
+          </Button>
+        </div>
       }
     >
       {/* Search & Company Filter Bar */}
@@ -380,6 +410,18 @@ export default function VehiclesPage() {
                           >
                             <BarChart3 className="w-3.5 h-3.5" />
                             <span>Details</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMaintVehicleId(v.id);
+                              setIsMaintenanceModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors cursor-pointer"
+                            title="Record maintenance or repair"
+                          >
+                            <Wrench className="w-3.5 h-3.5" />
+                            <span>Maint.</span>
                           </button>
                           <Button
                             size="sm"
@@ -640,6 +682,157 @@ export default function VehiclesPage() {
           </form>
         </Modal>
       )}
+
+      {/* Record Maintenance Modal */}
+      <Modal
+        isOpen={isMaintenanceModalOpen}
+        onClose={() => setIsMaintenanceModalOpen(false)}
+        title="Record Vehicle Maintenance & Repair"
+        description="Log repair costs, tyre changes, engine oil servicing, or workshop mechanical expenses."
+        maxWidth="md"
+      >
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            if (!maintVehicleId || !maintAmount) return;
+            setIsSubmittingMaint(true);
+            setMaintError(null);
+            try {
+              await dataRepo.recordMaintenance({
+                vehicle_id: maintVehicleId,
+                amount: parseFloat(maintAmount) || 0,
+                issue_type: maintIssueType,
+                workshop_name: maintGarage.trim() || null,
+                date: maintDate || getTodayDateString(),
+                bill_photo_url: maintPhotoUrl,
+                set_vehicle_maintenance_status: maintSetStatus,
+              });
+              setIsMaintenanceModalOpen(false);
+              setMaintAmount('');
+              setMaintGarage('');
+              setMaintPhotoUrl(null);
+              loadVehicles();
+            } catch (err: unknown) {
+              setMaintError(err instanceof Error ? err.message : 'Failed to record maintenance');
+            } finally {
+              setIsSubmittingMaint(false);
+            }
+          }}
+          className="space-y-4"
+        >
+          {maintError && <Alert variant="danger">{maintError}</Alert>}
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              Select Vehicle
+            </label>
+            <select
+              value={maintVehicleId}
+              onChange={(e) => setMaintVehicleId(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+              required
+            >
+              {vehicles.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.registration_number} — {v.make_model} ({v.company}) [{v.current_odometer} km]
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              Work / Issue Type
+            </label>
+            <select
+              value={maintIssueType}
+              onChange={(e) => setMaintIssueType(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+            >
+              <option value="Tyre Puncture / Replace">🛞 Tyre Puncture / Tyre Replacement</option>
+              <option value="Engine Oil / Filter Service">🛢️ Engine Oil / Filter Service</option>
+              <option value="Brake Repair / Pads">🛑 Brake Repair / Pads</option>
+              <option value="Battery Repair / Replacement">🔋 Battery Service</option>
+              <option value="Washing & Greasing">🧼 Washing & Greasing</option>
+              <option value="General Workshop / Mechanical">🛠️ General Workshop / Mechanical</option>
+              <option value="Spare Parts / Other Repair">🔩 Spare Parts / Other Repair</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Cost / Amount (₹) <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="number"
+                placeholder="e.g. 1500"
+                value={maintAmount}
+                onChange={(e) => setMaintAmount(e.target.value)}
+                className="w-full px-3 py-2 text-base font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Date
+              </label>
+              <input
+                type="date"
+                value={maintDate}
+                onChange={(e) => setMaintDate(e.target.value)}
+                className="w-full px-3 py-2 text-xs font-mono font-bold bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+              Workshop / Garage Name (Optional)
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Royal Tyre Works, Calicut"
+              value={maintGarage}
+              onChange={(e) => setMaintGarage(e.target.value)}
+              className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <label className="flex items-center gap-2 text-xs font-medium text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-200 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={maintSetStatus}
+              onChange={(e) => setMaintSetStatus(e.target.checked)}
+              className="w-4 h-4 text-amber-600 rounded"
+            />
+            <span>Mark vehicle status as <strong>&apos;Maintenance&apos;</strong> in fleet registry</span>
+          </label>
+
+          <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+            <Button
+              type="button"
+              variant="outline"
+              size="md"
+              onClick={() => setIsMaintenanceModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="md"
+              isLoading={isSubmittingMaint}
+              className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+            >
+              Record Maintenance
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </PageContainer>
   );
 }

@@ -29,12 +29,21 @@ export function StartTripModal({
   tripNumber,
 }: StartTripModalProps) {
   const { t } = useLanguage();
-  const [startOdometer, setStartOdometer] = useState<string>(String(defaultOdometer));
+  const [startOdometer, setStartOdometer] = useState<string>(String(defaultOdometer ?? ''));
   const [actualDestination, setActualDestination] = useState<string>(plannedDestination || '');
   const [notes, setNotes] = useState<string>('');
   const [showExtra, setShowExtra] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setStartOdometer(String(defaultOdometer != null ? defaultOdometer : ''));
+      setActualDestination(plannedDestination || '');
+      setNotes('');
+      setError(null);
+    }
+  }, [isOpen, defaultOdometer, plannedDestination]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
