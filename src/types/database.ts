@@ -130,6 +130,15 @@ export interface Assignment {
   updated_at: string;
 }
 
+export interface TripLocation {
+  latitude: number;
+  longitude: number;
+  address?: string | null;
+  place_name?: string | null;
+  accuracy?: number | null;
+  captured_at?: string | null;
+}
+
 export interface Trip {
   id: string;
   assignment_id: string;
@@ -142,6 +151,8 @@ export interface Trip {
   assigned_route_id: string | null;
   actual_destination: string | null;
   driver_notes: string | null;
+  start_location?: TripLocation | null;
+  end_location?: TripLocation | null;
   created_at: string;
   updated_at: string;
 }

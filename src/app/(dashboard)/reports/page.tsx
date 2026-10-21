@@ -132,8 +132,8 @@ export default function ReportsPage() {
 
   return (
     <PageContainer
-      title="മാസാവസാന കണക്കുകൾ (Monthly Reports)"
-      subtitle="ഡ്രൈവർമാർ എത്ര ദിവസം പണിയെടുത്തു, ഏതൊക്കെ വണ്ടിയിൽ എത്ര KM ഓടി, വണ്ടികളുടെ മാസ ചിലവുകൾ."
+      title="Monthly Fleet Reports"
+      subtitle="Driver working days, kilometers operated across vehicles, and vehicle monthly expenses."
       action={
         <div className="flex items-center gap-2 print:hidden">
           <Button
@@ -168,7 +168,7 @@ export default function ReportsPage() {
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>👷 ഡ്രൈവർ കണക്ക് (Driver-wise)</span>
+            <span>Driver Performance</span>
           </button>
           <button
             onClick={() => setActiveTab('vehicle')}
@@ -179,7 +179,7 @@ export default function ReportsPage() {
             }`}
           >
             <Truck className="w-3.5 h-3.5" />
-            <span>🚛 വണ്ടി ചിലവ് (Vehicle-wise)</span>
+            <span>Vehicle Utilization</span>
           </button>
         </div>
 
@@ -287,8 +287,8 @@ export default function ReportsPage() {
               <BarChart3 className="w-4 h-4 text-blue-600" />
               <span>
                 {activeTab === 'driver'
-                  ? 'ഡ്രൈവർമാരുടെ ജോലി സമയവും കിലോമീറ്ററും (Top Drivers)'
-                  : 'വണ്ടികളുടെ കിലോമീറ്റർ ഉപയോഗം (Vehicle Distance)'}
+                  ? 'Top Drivers by Hours & Distance'
+                  : 'Vehicle Distance Run'}
               </span>
             </h3>
             <span className="text-[11px] text-slate-400 font-mono">
@@ -369,25 +369,25 @@ export default function ReportsPage() {
                       type="text"
                       value={driverSearchQuery}
                       onChange={(e) => setDriverSearchQuery(e.target.value)}
-                      placeholder="ഡ്രൈവറുടെ പേര് / ഫോൺ നമ്പർ അടിച്ചു തിരയുക (Search driver)..."
+                      placeholder="Search driver by name or phone..."
                       className="w-full pl-9 pr-3 py-2 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                     />
                   </div>
                   <div className="text-xs font-bold text-slate-600">
-                    {filteredDriverReport.length} ഡ്രൈവർമാർ (Drivers found)
+                    {filteredDriverReport.length} Drivers found
                   </div>
                 </div>
 
                 <table className="w-full text-left text-sm">
                   <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                     <tr>
-                      <th className="px-5 py-3.5">ഡ്രൈവർ (Driver)</th>
-                      <th className="px-5 py-3.5">ജോലി ചെയ്ത ദിവസങ്ങൾ (Days)</th>
-                      <th className="px-5 py-3.5">സമയം (Hours)</th>
-                      <th className="px-5 py-3.5">ഓടിയ കിലോമീറ്റർ (Total KM)</th>
-                      <th className="px-5 py-3.5">ഓടിച്ച വണ്ടികൾ (Vehicles Driven)</th>
-                      <th className="px-5 py-3.5">റൂട്ടുകൾ (Routes)</th>
-                      <th className="px-5 py-3.5 text-right">വിശദാംശങ്ങൾ (Details)</th>
+                      <th className="px-5 py-3.5">Driver</th>
+                      <th className="px-5 py-3.5">Days Worked</th>
+                      <th className="px-5 py-3.5">Duty Hours</th>
+                      <th className="px-5 py-3.5">Total KM</th>
+                      <th className="px-5 py-3.5">Vehicles Driven</th>
+                      <th className="px-5 py-3.5">Routes</th>
+                      <th className="px-5 py-3.5 text-right">Details</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -481,15 +481,15 @@ export default function ReportsPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-[11px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
                   <tr>
-                    <th className="px-5 py-3.5">വണ്ടി നമ്പർ (Registration)</th>
-                    <th className="px-5 py-3.5">കമ്പനി (Company)</th>
-                    <th className="px-5 py-3.5">മോഡൽ (Make & Model)</th>
-                    <th className="px-5 py-3.5">ഓടിയ ദിവസങ്ങൾ (Duty Days)</th>
-                    <th className="px-5 py-3.5">ട്രിപ്പുകൾ (Trips)</th>
-                    <th className="px-5 py-3.5">കിലോമീറ്റർ (Total KM)</th>
-                    <th className="px-5 py-3.5">ഓടിച്ച ഡ്രൈവർമാർ (Drivers)</th>
-                    <th className="px-5 py-3.5">റൂട്ടുകൾ (Routes)</th>
-                    <th className="px-5 py-3.5 text-right">മാസ ചിലവുകൾ (Expenses)</th>
+                    <th className="px-5 py-3.5">Registration</th>
+                    <th className="px-5 py-3.5">Company</th>
+                    <th className="px-5 py-3.5">Make & Model</th>
+                    <th className="px-5 py-3.5">Duty Days</th>
+                    <th className="px-5 py-3.5">Trips</th>
+                    <th className="px-5 py-3.5">Total KM</th>
+                    <th className="px-5 py-3.5">Drivers</th>
+                    <th className="px-5 py-3.5">Routes</th>
+                    <th className="px-5 py-3.5 text-right">Expenses</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -533,7 +533,7 @@ export default function ReportsPage() {
                       <td className="px-5 py-4 text-right">
                         <Link href={`/vehicles/${row.registrationNumber.slice(-4)}`}>
                           <Button size="sm" variant="outline" className="text-xs py-1">
-                            ചിലവ് കാണുക (Expenses)
+                            View Details
                           </Button>
                         </Link>
                       </td>

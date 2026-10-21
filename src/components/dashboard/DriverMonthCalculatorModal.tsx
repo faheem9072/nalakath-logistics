@@ -124,7 +124,7 @@ export function DriverMonthCalculatorModal({
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="w-full h-11 px-3 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
             >
-              <option value="2026-10">October 2026 (നടപ്പ് മാസം)</option>
+              <option value="2026-10">October 2026 (Current Month)</option>
               <option value="2026-09">September 2026</option>
               <option value="2026-08">August 2026</option>
               <option value="ALL">{t('allMonths')}</option>
@@ -136,7 +136,7 @@ export function DriverMonthCalculatorModal({
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
           {isLoading ? (
             <div className="py-12 text-center text-slate-500 font-medium">
-              കണക്കുകൾ തയ്യാറാക്കുന്നു (Calculating)...
+              Calculating metrics...
             </div>
           ) : !summary ? (
             <div className="py-12 text-center text-slate-500 font-medium">
@@ -248,7 +248,7 @@ export function DriverMonthCalculatorModal({
               <div className="space-y-2.5 pt-2">
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-blue-600" />
-                  {lang === 'ml' ? 'ദിവസേനയുള്ള ട്രിപ്പുകൾ (Trip Logs)' : 'Daily Trip Log'}
+                  Daily Trip Log
                 </h4>
 
                 <div className="space-y-2">
@@ -308,7 +308,7 @@ export function DriverMonthCalculatorModal({
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
           >
-            {lang === 'ml' ? 'ശരി (Done)' : 'Close'}
+            Close
           </button>
         </div>
       </div>

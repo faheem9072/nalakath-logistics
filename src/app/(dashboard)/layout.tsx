@@ -1,9 +1,8 @@
 'use client';
 
 import React from 'react';
-import { Sidebar } from '@/components/layout/Sidebar';
-import { Header } from '@/components/layout/Header';
-import { MobileBottomNav } from '@/components/layout/MobileBottomNav';
+import { MoveIQTopBar } from '@/components/moveiq/MoveIQTopBar';
+import { MoveIQBottomNav } from '@/components/moveiq/MoveIQBottomNav';
 
 export default function DashboardLayout({
   children,
@@ -11,16 +10,24 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900">
-      {/* Desktop Navigation Sidebar (hidden on mobile) */}
-      <Sidebar />
+    <div className="min-h-screen bg-[#F2F4F7] text-[#121316] flex flex-col justify-between">
+      {/* Container simulating smartphone/mobile viewport frame cleanly on all devices */}
+      <div className="w-full max-w-md mx-auto min-h-screen flex flex-col bg-[#F2F4F7] sm:shadow-2xl sm:border sm:border-gray-200/80 sm:my-3 sm:rounded-[36px] sm:overflow-hidden relative">
+        {/* MoveIQ Top Bar: Bell with green dot, Logo in center, Avatar on right */}
+        <MoveIQTopBar />
 
-      {/* Main Content Viewport */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        <Header />
-        <main className="flex-1 pb-24 lg:pb-16">{children}</main>
-        {/* Mobile Bottom Navigation Bar (visible on mobile only) */}
-        <MobileBottomNav />
+        {/* Main Content Area */}
+        <main className="flex-1 px-4 py-3 overflow-y-auto no-scrollbar pb-2">
+          {children}
+
+          {/* Subtle Kore Footer */}
+          <footer className="text-center py-4 text-[11px] font-medium text-gray-400">
+            Designed and developed by Kore
+          </footer>
+        </main>
+
+        {/* MoveIQ Bottom Navigation: Drivers, Vehicles */}
+        <MoveIQBottomNav role="owner" />
       </div>
     </div>
   );

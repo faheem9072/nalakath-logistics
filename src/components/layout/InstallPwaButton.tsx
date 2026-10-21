@@ -64,10 +64,10 @@ export function InstallPwaButton({ className = '' }: { className?: string }) {
         onClick={handleInstallClick}
         type="button"
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer ${className}`}
-        title={lang === 'ml' ? 'ഫോണിൽ ആപ്പായി ഇൻസ്റ്റാൾ ചെയ്യുക' : 'Install app to home screen'}
+        title="Install app to home screen"
       >
         <Download className="w-3.5 h-3.5 animate-bounce" />
-        <span>{lang === 'ml' ? 'ആപ്പ് ഇൻസ്റ്റാൾ' : 'Install App'}</span>
+        <span>Install App</span>
       </button>
 
       {/* Mobile Instructions Modal */}
@@ -78,7 +78,7 @@ export function InstallPwaButton({ className = '' }: { className?: string }) {
               <div className="flex items-center gap-2">
                 <Smartphone className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-sm font-bold">
-                  {lang === 'ml' ? 'ഫോണിൽ ആപ്പ് ഇൻസ്റ്റാൾ ചെയ്യാൻ' : 'Install Nalakath App'}
+                  Install Nalakath App
                 </h3>
               </div>
               <button
@@ -93,24 +93,20 @@ export function InstallPwaButton({ className = '' }: { className?: string }) {
               <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700 space-y-2">
                 <p className="font-bold text-white flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  {lang === 'ml' ? 'ആൻഡ്രോയിഡ് ക്രോമിൽ (Chrome):' : 'Android Chrome:'}
+                  Android Chrome:
                 </p>
                 <p className="text-slate-300 text-[11px]">
-                  {lang === 'ml'
-                    ? 'മുകളിൽ വലതുവശത്തുള്ള 3 ഡോട്ടുകൾ (⋮) ക്ലിക്ക് ചെയ്ത് "Add to Home screen" അല്ലെങ്കിൽ "Install app" തിരഞ്ഞെടുക്കുക.'
-                    : 'Tap the 3 dots menu (⋮) at top right and choose "Add to Home screen" or "Install App".'}
+                  Tap the 3 dots menu (⋮) at top right and choose &quot;Add to Home screen&quot; or &quot;Install App&quot;.
                 </p>
               </div>
 
               <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700 space-y-2">
                 <p className="font-bold text-white flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
-                  {lang === 'ml' ? 'ഐഫോൺ സഫാരിയിൽ (iPhone Safari):' : 'iPhone Safari:'}
+                  iPhone Safari:
                 </p>
                 <p className="text-slate-300 text-[11px]">
-                  {lang === 'ml'
-                    ? 'താഴെയുള്ള "Share" ബട്ടണിൽ ക്ലിക്ക് ചെയ്ത് താഴേക്ക് സ്ക്രോൾ ചെയ്ത് "Add to Home Screen" നൽകുക.'
-                    : 'Tap the Share icon at bottom and select "Add to Home Screen".'}
+                  Tap the Share icon at bottom and select &quot;Add to Home Screen&quot;.
                 </p>
               </div>
             </div>
@@ -119,7 +115,7 @@ export function InstallPwaButton({ className = '' }: { className?: string }) {
               onClick={() => setShowInstructions(false)}
               className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
             >
-              {lang === 'ml' ? 'മനസ്സിലായി' : 'Got it'}
+              Got it
             </button>
           </div>
         </div>

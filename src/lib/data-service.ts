@@ -11,6 +11,7 @@ import {
   AuditLog,
   Expense,
   ExpenseType,
+  TripLocation,
 } from '@/types/database';
 import {
   AssignmentWithDetails,
@@ -19,6 +20,7 @@ import {
   ExpenseWithDetails,
   VehicleDetailReport,
   VehicleMonthlyDriverStats,
+  VehicleTravelHistoryTrip,
 } from '@/types/models';
 import {
   INITIAL_PROFILES,
@@ -88,7 +90,21 @@ export interface VehicleTravelHistory {
   }[];
 }
 
-const SEED_VERSION = 'nalakath_v6_oct2026';
+const SEED_VERSION = 'nalakath_v7_moveiq_oct2026';
+
+const INITIAL_VEHICLE_INCOMES: Record<string, number> = {
+  'veh-del-3057_2026-10': 52000,
+  'veh-del-3443_2026-10': 56000,
+  'veh-del-7384_2026-10': 64000,
+  'veh-del-5839_2026-10': 58000,
+  'veh-del-6587_2026-10': 54000,
+  'veh-del-2266_2026-10': 48000,
+  'veh-del-4474_2026-10': 50000,
+  'veh-sfx-5682_2026-10': 68000,
+  'veh-sfx-5801_2026-10': 62000,
+  'veh-sfx-7543_2026-10': 52000,
+  'veh-sfx-1524_2026-10': 49000,
+};
 
 // Runtime in-memory state (can be saved/restored from localStorage in browser)
 class DataRepository {
@@ -102,6 +118,7 @@ class DataRepository {
   private events: AssignmentEvent[] = [...INITIAL_EVENTS];
   private auditLogs: AuditLog[] = [...INITIAL_AUDIT_LOGS];
   private expenses: Expense[] = [...INITIAL_EXPENSES];
+  private vehicleIncomes: Record<string, number> = { ...INITIAL_VEHICLE_INCOMES };
   private currentUserId: string = '00000000-0000-0000-0000-000000000001'; // Default Owner
 
   constructor() {
@@ -118,6 +135,7 @@ class DataRepository {
           localStorage.removeItem('fleetflow_routes');
           localStorage.removeItem('fleetflow_teams');
           localStorage.removeItem('fleetflow_expenses');
+          localStorage.removeItem('fleetflow_incomes');
           localStorage.setItem('fleetflow_seed_version', SEED_VERSION);
 
           this.profiles = [...INITIAL_PROFILES];
@@ -130,6 +148,7 @@ class DataRepository {
           this.events = [...INITIAL_EVENTS];
           this.auditLogs = [...INITIAL_AUDIT_LOGS];
           this.expenses = [...INITIAL_EXPENSES];
+          this.vehicleIncomes = { ...INITIAL_VEHICLE_INCOMES };
         } else {
           const savedUser = localStorage.getItem('fleetflow_current_user_id');
           if (savedUser) {
@@ -167,6 +186,10 @@ class DataRepository {
           if (savedExpenses) {
             this.expenses = JSON.parse(savedExpenses);
           }
+          const savedIncomes = localStorage.getItem('fleetflow_incomes');
+          if (savedIncomes) {
+            this.vehicleIncomes = JSON.parse(savedIncomes);
+          }
         }
       } catch (err) {
         console.warn('Failed to load local storage state:', err);
@@ -199,6 +222,7 @@ class DataRepository {
         localStorage.setItem('fleetflow_routes', JSON.stringify(this.routes));
         localStorage.setItem('fleetflow_teams', JSON.stringify(this.teams));
         localStorage.setItem('fleetflow_expenses', JSON.stringify(this.expenses));
+        localStorage.setItem('fleetflow_incomes', JSON.stringify(this.vehicleIncomes));
       } catch (err) {
         console.warn('Failed to persist to local storage:', err);
       }
@@ -264,7 +288,7 @@ class DataRepository {
     }
     const last10 = cleanPhone.slice(-10);
     if (!last10 || last10.length < 10) {
-      throw new Error('Please enter a valid 10-digit mobile number / ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക');
+      throw new Error('Please enter a valid 10-digit mobile number');
     }
 
     const matchedDriver = this.drivers.find((d) => {
@@ -274,12 +298,12 @@ class DataRepository {
 
     if (!matchedDriver) {
       throw new Error(
-        `ഈ മൊബൈൽ നമ്പർ (${cleanPhone}) ഓണർ ഡാഷ്‌ബോർഡിൽ രജിസ്റ്റർ ചെയ്തിട്ടില്ല. ദയവായി ഓണർ നൽകിയ മൊബൈൽ നമ്പർ നൽകുക. / Mobile number not registered by owner.`
+        `Mobile number (${cleanPhone}) is not registered by owner. Please check with your fleet administrator.`
       );
     }
 
     if (matchedDriver.status !== 'active') {
-      throw new Error('ഈ ഡ്രൈവർ അക്കൗണ്ട് താൽക്കാലികമായി നിർജ്ജീവമാക്കിയിരിക്കുന്നു. ദയവായി ഓണറെ ബന്ധപ്പെടുക. / Account inactive.');
+      throw new Error('This driver account is currently inactive. Please contact the owner.');
     }
 
     let profile = this.profiles.find(
@@ -315,7 +339,7 @@ class DataRepository {
   async loginDriverByNameAndPhone(name: string, phone: string): Promise<Profile> {
     const cleanName = (name || '').trim();
     if (!cleanName) {
-      throw new Error('Please enter driver name / ഡ്രൈവറുടെ പേര് നൽകുക');
+      throw new Error('Please enter driver name');
     }
 
     let cleanPhone = (phone || '').trim().replace(/[\s-]/g, '');
@@ -323,7 +347,7 @@ class DataRepository {
       cleanPhone = `+91${cleanPhone}`;
     }
     if (!cleanPhone.match(/^\+?[1-9]\d{9,14}$/)) {
-      throw new Error('Please enter a valid 10-digit mobile number / ശരിയായ 10 അക്ക മൊബൈൽ നമ്പർ നൽകുക');
+      throw new Error('Please enter a valid 10-digit mobile number');
     }
 
     const normInputName = cleanName.toLowerCase();
@@ -347,11 +371,11 @@ class DataRepository {
       });
       if (nameMatch) {
         throw new Error(
-          `നൽകിയ മൊബൈൽ നമ്പർ (${cleanPhone}) ഡ്രൈവർ ${nameMatch.full_name}ന്റെ രജിസ്റ്റർ ചെയ്ത നമ്പറുമായി പൊരുത്തപ്പെടുന്നില്ല. ഓണർ നൽകിയ നമ്പർ തന്നെ നൽകുക. / Mobile number does not match registered phone for ${nameMatch.full_name}.`
+          `Mobile number (${cleanPhone}) does not match registered phone for ${nameMatch.full_name}.`
         );
       }
       throw new Error(
-        `ഈ പേരോ നമ്പറോ ഓണർ ഡാഷ്‌ബോർഡിൽ രജിസ്റ്റർ ചെയ്തിട്ടില്ല. ദയവായി ഓണർ നൽകിയ ഡ്രൈവർ പേരും മൊബൈൽ നമ്പറും നൽകുക. / Driver not found in owner registry.`
+        `Driver credentials not found in owner registry. Please enter registered name and mobile number.`
       );
     }
 
@@ -371,12 +395,12 @@ class DataRepository {
 
     if (!matchedDriver) {
       throw new Error(
-        `നൽകിയ പേര് (${cleanName}) ഈ മൊബൈൽ നമ്പറിലുള്ള ഡ്രൈവറുടെ രജിസ്റ്റർ ചെയ്ത പേരുമായി (${phoneMatches[0].full_name}) പൊരുത്തപ്പെടുന്നില്ല. / Name does not match registered driver name.`
+        `Driver name (${cleanName}) does not match registered driver name for this phone number (${phoneMatches[0].full_name}).`
       );
     }
 
     if (matchedDriver.status !== 'active') {
-      throw new Error('ഈ ഡ്രൈവർ അക്കൗണ്ട് താൽക്കാലികമായി നിർജ്ജീവമാക്കിയിരിക്കുന്നു. ദയവായി ഓണറെ ബന്ധപ്പെടുക. / Account inactive.');
+      throw new Error('This driver account is currently inactive. Please contact the owner.');
     }
 
     // Find or create profile linked to this driver
@@ -765,6 +789,7 @@ class DataRepository {
     startOdometer: number;
     actualDestination?: string | null;
     notes?: string | null;
+    startLocation?: TripLocation | null;
   }): Promise<Trip> {
     const assign = this.assignments.find((a) => a.id === params.assignmentId);
     if (!assign) throw new Error('Assignment not found');
@@ -792,6 +817,8 @@ class DataRepository {
       assigned_route_id: assign.route_id,
       actual_destination: params.actualDestination || null,
       driver_notes: params.notes || null,
+      start_location: params.startLocation || null,
+      end_location: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -836,6 +863,7 @@ class DataRepository {
     startOdometer: number;
     destination?: string | null;
     notes?: string | null;
+    startLocation?: TripLocation | null;
   }): Promise<Trip> {
     const driver = this.drivers.find(
       (d) =>
@@ -895,6 +923,7 @@ class DataRepository {
       startOdometer: params.startOdometer,
       actualDestination: params.destination,
       notes: params.notes,
+      startLocation: params.startLocation,
     });
   }
 
@@ -948,6 +977,7 @@ class DataRepository {
     endOdometer: number;
     notes?: string | null;
     isFinalTripOfDuty?: boolean;
+    endLocation?: TripLocation | null;
     expenses?: Array<{
       expense_type: ExpenseType;
       amount: number;
@@ -974,6 +1004,9 @@ class DataRepository {
     trip.status = 'completed';
     trip.end_time = new Date().toISOString();
     trip.end_odometer = params.endOdometer;
+    if (params.endLocation !== undefined) {
+      trip.end_location = params.endLocation || null;
+    }
     if (params.notes) {
       trip.driver_notes = trip.driver_notes
         ? `${trip.driver_notes}\n${params.notes}`
@@ -1709,6 +1742,59 @@ class DataRepository {
     const distinctDates = new Set(vehicleAssignments.map((a) => a.duty_date));
     const totalMonthKm = driversWhoDrove.reduce((sum, d) => sum + d.totalKm, 0);
 
+    // 5. Travel History for this vehicle in targetMonth (newest first)
+    const travelHistory: VehicleTravelHistoryTrip[] = vehicleTrips
+      .map((t) => {
+        const assign = assignmentsMap.get(t.assignment_id);
+        const driver = assign ? driversMap.get(assign.driver_id) : null;
+        const dutyDate = assign?.duty_date || (t.start_time ? t.start_time.split('T')[0] : targetMonth);
+        const driverName = driver?.full_name || 'Assigned Driver';
+        const driverPhone = driver?.phone || '';
+
+        const startPlace =
+          t.start_location?.place_name ||
+          (t.start_location
+            ? `${t.start_location.latitude.toFixed(4)}, ${t.start_location.longitude.toFixed(4)}`
+            : 'Location not available');
+
+        const endPlace =
+          t.end_location?.place_name ||
+          (t.end_location
+            ? `${t.end_location.latitude.toFixed(4)}, ${t.end_location.longitude.toFixed(4)}`
+            : t.status === 'in_progress'
+            ? 'Trip in progress'
+            : 'Location not available');
+
+        const startKm = t.start_odometer !== null && t.start_odometer !== undefined ? t.start_odometer : null;
+        const endKm = t.end_odometer !== null && t.end_odometer !== undefined ? t.end_odometer : null;
+        const distanceKm =
+          startKm !== null && endKm !== null && endKm >= startKm
+            ? Math.round((endKm - startKm) * 10) / 10
+            : 0;
+
+        return {
+          tripId: t.id,
+          dutyDate,
+          driverName,
+          driverPhone,
+          startPlace,
+          endPlace,
+          startOdometer: startKm,
+          endOdometer: endKm,
+          distanceKm,
+          startLocation: t.start_location || null,
+          endLocation: t.end_location || null,
+          status: t.status,
+        };
+      })
+      .sort((a, b) => {
+        // Newest first by dutyDate or tripId
+        return b.dutyDate.localeCompare(a.dutyDate) || b.tripId.localeCompare(a.tripId);
+      });
+
+    const monthlyIncome = this.getVehicleMonthlyIncomeSync(vehicle.id, targetMonth);
+    const profitOrLoss = monthlyIncome - grandTotal;
+
     return {
       vehicle,
       selectedMonth: targetMonth,
@@ -1720,6 +1806,9 @@ class DataRepository {
       totalDaysOperated: distinctDates.size,
       totalTripsCount: vehicleTrips.length,
       totalMonthKm: Math.round(totalMonthKm * 10) / 10,
+      monthlyIncome,
+      profitOrLoss,
+      travelHistory,
       expenses: {
         totals: {
           fuel: fuelTotal,
@@ -1805,6 +1894,125 @@ class DataRepository {
     );
     if (!driver) return [];
     return this.getExpenses({ driverId: driver.id, monthPrefix });
+  }
+
+  // --- MONTHLY VEHICLE INCOME & PROFIT/LOSS ---
+  getVehicleMonthlyIncomeSync(vehicleId: string, monthPrefix?: string): number {
+    const month = monthPrefix || getCurrentMonthPrefix();
+    const key = `${vehicleId}_${month}`;
+    if (this.vehicleIncomes[key] !== undefined) {
+      return this.vehicleIncomes[key];
+    }
+    const v = this.vehicles.find((veh) => veh.id === vehicleId);
+    if (v?.company === 'Shadowfax') return 55000;
+    return 52000;
+  }
+
+  async getVehicleMonthlyIncome(vehicleId: string, monthPrefix?: string): Promise<number> {
+    return this.getVehicleMonthlyIncomeSync(vehicleId, monthPrefix);
+  }
+
+  async setVehicleMonthlyIncome(
+    vehicleId: string,
+    monthPrefix: string,
+    amount: number
+  ): Promise<void> {
+    const key = `${vehicleId}_${monthPrefix}`;
+    this.vehicleIncomes[key] = Math.max(0, amount);
+    this.persist();
+  }
+
+  // --- TRIP & EXPENSE CORRECTIONS (OWNER OVERRIDE) ---
+  async updateExpense(id: string, updates: Partial<Expense>): Promise<Expense> {
+    const exp = this.expenses.find((e) => e.id === id);
+    if (!exp) throw new Error('Expense not found');
+    Object.assign(exp, updates, { updated_at: new Date().toISOString() });
+    this.persist();
+    return exp;
+  }
+
+  async deleteExpense(id: string): Promise<void> {
+    const idx = this.expenses.findIndex((e) => e.id === id);
+    if (idx !== -1) {
+      this.expenses.splice(idx, 1);
+      this.persist();
+    }
+  }
+
+  async updateTrip(id: string, updates: Partial<Trip>): Promise<Trip> {
+    const trip = this.trips.find((t) => t.id === id);
+    if (!trip) throw new Error('Trip not found');
+    Object.assign(trip, updates, { updated_at: new Date().toISOString() });
+
+    // If odometer changed, sync vehicle current odometer if needed
+    if (updates.end_odometer !== undefined && updates.end_odometer !== null) {
+      const assign = this.assignments.find((a) => a.id === trip.assignment_id);
+      if (assign) {
+        const vehicle = this.vehicles.find((v) => v.id === assign.vehicle_id);
+        if (vehicle && updates.end_odometer > vehicle.current_odometer) {
+          vehicle.current_odometer = updates.end_odometer;
+        }
+      }
+    }
+
+    this.persist();
+    return trip;
+  }
+
+  async deleteTrip(id: string): Promise<void> {
+    const idx = this.trips.findIndex((t) => t.id === id);
+    if (idx !== -1) {
+      this.trips.splice(idx, 1);
+      this.persist();
+    }
+  }
+
+  // --- ARCHIVING ---
+  async archiveVehicle(id: string): Promise<Vehicle> {
+    return this.updateVehicle(id, { status: 'inactive' });
+  }
+
+  async archiveDriver(id: string): Promise<Driver> {
+    return this.updateDriver(id, { status: 'inactive' });
+  }
+
+  // --- LIVE TRIP & VEHICLE/DRIVER STATUS ---
+  getActiveTripForVehicle(vehicleId: string): {
+    trip: Trip;
+    driver: Driver;
+    assignment: Assignment;
+  } | null {
+    for (const trip of this.trips) {
+      if (trip.status === 'in_progress') {
+        const assign = this.assignments.find((a) => a.id === trip.assignment_id);
+        if (assign && assign.vehicle_id === vehicleId) {
+          const driver = this.drivers.find((d) => d.id === assign.driver_id);
+          if (driver) {
+            return { trip, driver, assignment: assign };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  getActiveTripForDriver(driverId: string): {
+    trip: Trip;
+    vehicle: Vehicle;
+    assignment: Assignment;
+  } | null {
+    for (const trip of this.trips) {
+      if (trip.status === 'in_progress') {
+        const assign = this.assignments.find((a) => a.id === trip.assignment_id);
+        if (assign && assign.driver_id === driverId) {
+          const vehicle = this.vehicles.find((v) => v.id === assign.vehicle_id);
+          if (vehicle) {
+            return { trip, vehicle, assignment: assign };
+          }
+        }
+      }
+    }
+    return null;
   }
 
   async assignDriverAdhocVehicle(

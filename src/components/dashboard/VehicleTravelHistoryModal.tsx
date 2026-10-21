@@ -116,7 +116,7 @@ export function VehicleTravelHistoryModal({
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
           {isLoading ? (
             <div className="py-12 text-center text-slate-500 font-medium">
-              വിവരങ്ങൾ ശേഖരിക്കുന്നു (Loading travel history)...
+              Loading travel history...
             </div>
           ) : !historyData ? (
             <div className="py-12 text-center text-slate-500 font-medium">
@@ -128,7 +128,7 @@ export function VehicleTravelHistoryModal({
               <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 text-white p-4 rounded-xl shadow-xs">
                 <div>
                   <span className="text-[10px] text-blue-400 font-bold uppercase tracking-wider block">
-                    {lang === 'ml' ? 'വണ്ടി നമ്പർ' : 'Vehicle Registration'}
+                    Vehicle Registration
                   </span>
                   <span className="text-xl font-black font-mono tracking-tight text-white block">
                     {historyData.vehicle.registration_number}
@@ -162,7 +162,7 @@ export function VehicleTravelHistoryModal({
 
                 <div className="bg-blue-50 border border-blue-200/80 rounded-xl p-3 text-center">
                   <span className="text-[11px] font-bold text-blue-800 uppercase block tracking-wider">
-                    {lang === 'ml' ? 'ആകെ ട്രിപ്പുകൾ' : 'Total Trips'}
+                    Total Trips
                   </span>
                   <span className="text-xl sm:text-2xl font-black text-blue-700 font-mono block mt-0.5">
                     {historyData.tripsCount}
@@ -185,7 +185,7 @@ export function VehicleTravelHistoryModal({
               <div className="space-y-2">
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-blue-600" />
-                  {lang === 'ml' ? 'ഈ വണ്ടി ഓടിച്ച ഡ്രൈവർമാർ' : 'Drivers Who Operated This Vehicle'}
+                  Drivers Who Operated This Vehicle
                 </h4>
 
                 <div className="flex flex-wrap gap-2">
@@ -207,7 +207,7 @@ export function VehicleTravelHistoryModal({
               <div className="space-y-2.5 pt-2">
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   <MapPin className="w-4 h-4 text-blue-600" />
-                  {lang === 'ml' ? 'വണ്ടി സഞ്ചരിച്ച വഴികൾ (Travel Log)' : 'Complete Travel & Destination Log'}
+                  Complete Travel & Destination Log
                 </h4>
 
                 <div className="space-y-2.5">
@@ -241,7 +241,7 @@ export function VehicleTravelHistoryModal({
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100 text-[11px] text-slate-600">
                         <div className="flex items-center gap-2">
                           <span>
-                            {lang === 'ml' ? 'ഡ്രൈവർ:' : 'Driver:'}{' '}
+                            Driver:{' '}
                             <strong className="text-slate-900">{item.driverName}</strong>
                           </span>
                           {item.driverPhone && (
@@ -288,7 +288,7 @@ export function VehicleTravelHistoryModal({
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
           >
-            {lang === 'ml' ? 'ശരി (Done)' : 'Close'}
+            Close
           </button>
         </div>
       </div>

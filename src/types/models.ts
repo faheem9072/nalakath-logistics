@@ -8,11 +8,38 @@ import {
   AssignmentEvent,
   Profile,
   Expense,
+  TripLocation,
 } from './database';
 
 export interface ExpenseWithDetails extends Expense {
   vehicle?: Vehicle | null;
   driver?: Driver | null;
+}
+
+export interface DriverMonthlySummary {
+  driver: Driver;
+  month: string;
+  totalKilometers: number;
+  totalDaysWorked: number;
+  totalTripsCount: number;
+  vehiclesBreakdown: {
+    vehicle: Vehicle;
+    tripsCount: number;
+    totalKm: number;
+  }[];
+  tripDetails: {
+    tripId: string;
+    dutyDate: string;
+    vehicleRegistration: string;
+    vehicleModel: string;
+    destination: string;
+    routeName: string;
+    startOdo: number | null;
+    endOdo: number | null;
+    distance: number;
+    notes?: string | null;
+    status: string;
+  }[];
 }
 
 export interface VehicleMonthlyDriverStats {
@@ -26,6 +53,21 @@ export interface VehicleMonthlyDriverStats {
   dates: string[];
 }
 
+export interface VehicleTravelHistoryTrip {
+  tripId: string;
+  dutyDate: string;
+  driverName: string;
+  driverPhone: string;
+  startPlace: string;
+  endPlace: string;
+  startOdometer: number | null;
+  endOdometer: number | null;
+  distanceKm: number;
+  startLocation?: TripLocation | null;
+  endLocation?: TripLocation | null;
+  status: string;
+}
+
 export interface VehicleDetailReport {
   vehicle: Vehicle;
   selectedMonth: string; // YYYY-MM
@@ -37,6 +79,9 @@ export interface VehicleDetailReport {
   totalDaysOperated: number;
   totalTripsCount: number;
   totalMonthKm: number;
+  monthlyIncome: number;
+  profitOrLoss: number;
+  travelHistory: VehicleTravelHistoryTrip[];
   expenses: {
     totals: {
       fuel: number;

@@ -34,12 +34,12 @@ export function SimpleAddDriverModal({
     let mobile = phone.trim().replace(/[\s-]/g, '');
 
     if (!name) {
-      setError('Please enter driver name / ഡ്രൈവറുടെ പേര് നൽകുക');
+      setError('Please enter driver name');
       return;
     }
 
     if (!mobile) {
-      setError('Please enter mobile number / മൊബൈൽ നമ്പർ നൽകുക');
+      setError('Please enter mobile number');
       return;
     }
 

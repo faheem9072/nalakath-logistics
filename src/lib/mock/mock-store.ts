@@ -1055,7 +1055,7 @@ export const INITIAL_ASSIGNMENTS: Assignment[] = [
   },
 ];
 
-// 7. TRIPS (Pre-filled for the 4 specified vehicles ONLY)
+// 7. TRIPS (Pre-filled for the specified vehicles with GPS locations)
 export const INITIAL_TRIPS: Trip[] = [
   // Today's active trip for Refnise on KL 84 B 3057
   {
@@ -1070,6 +1070,14 @@ export const INITIAL_TRIPS: Trip[] = [
     assigned_route_id: 'rt-del-adhoc',
     actual_destination: 'Calicut Depot Dispatch',
     driver_notes: 'Ad-hoc morning delivery in progress',
+    start_location: {
+      latitude: 11.2588,
+      longitude: 75.7804,
+      place_name: 'Delhivery Central Hub, West Hill, Kozhikode',
+      accuracy: 12,
+      captured_at: new Date(Date.now() - 7200000).toISOString(),
+    },
+    end_location: null,
     created_at: new Date(Date.now() - 7200000).toISOString(),
     updated_at: new Date(Date.now() - 7200000).toISOString(),
   },
@@ -1087,6 +1095,20 @@ export const INITIAL_TRIPS: Trip[] = [
     assigned_route_id: 'rt-del-adhoc',
     actual_destination: 'Calicut & Pantheeramkavu Cluster',
     driver_notes: 'All packets delivered on time',
+    start_location: {
+      latitude: 11.2588,
+      longitude: 75.7804,
+      place_name: 'Delhivery Kozhikode Hub, West Hill',
+      accuracy: 10,
+      captured_at: `${getMonthDate(4)}T07:10:00Z`,
+    },
+    end_location: {
+      latitude: 11.2185,
+      longitude: 75.834,
+      place_name: 'Pantheeramkavu Delivery Center, Kozhikode',
+      accuracy: 15,
+      captured_at: `${getMonthDate(4)}T14:45:00Z`,
+    },
     created_at: `${getMonthDate(4)}T07:10:00Z`,
     updated_at: `${getMonthDate(4)}T14:45:00Z`,
   },
@@ -1102,6 +1124,20 @@ export const INITIAL_TRIPS: Trip[] = [
     assigned_route_id: 'rt-del-adhoc',
     actual_destination: 'Mavoor Road & Medical College',
     driver_notes: 'Good road conditions, no delays',
+    start_location: {
+      latitude: 11.261,
+      longitude: 75.795,
+      place_name: 'Mavoor Road Transit Depot, Kozhikode',
+      accuracy: 8,
+      captured_at: `${getMonthDate(6)}T07:45:00Z`,
+    },
+    end_location: {
+      latitude: 11.272,
+      longitude: 75.837,
+      place_name: 'Govt Medical College Junction, Calicut',
+      accuracy: 14,
+      captured_at: `${getMonthDate(6)}T15:50:00Z`,
+    },
     created_at: `${getMonthDate(6)}T07:45:00Z`,
     updated_at: `${getMonthDate(6)}T15:50:00Z`,
   },
@@ -1117,6 +1153,20 @@ export const INITIAL_TRIPS: Trip[] = [
     assigned_route_id: 'rt-del-adhoc',
     actual_destination: 'Feroke & Ramanattukara',
     driver_notes: 'Refnise run complete',
+    start_location: {
+      latitude: 11.1764,
+      longitude: 75.8315,
+      place_name: 'Feroke Railway Goods Yard, Calicut',
+      accuracy: 11,
+      captured_at: `${getMonthDate(8)}T07:15:00Z`,
+    },
+    end_location: {
+      latitude: 11.173,
+      longitude: 75.867,
+      place_name: 'Ramanattukara Bypass Terminal, Calicut',
+      accuracy: 12,
+      captured_at: `${getMonthDate(8)}T15:15:00Z`,
+    },
     created_at: `${getMonthDate(8)}T07:15:00Z`,
     updated_at: `${getMonthDate(8)}T15:15:00Z`,
   },
@@ -1132,6 +1182,20 @@ export const INITIAL_TRIPS: Trip[] = [
     assigned_route_id: 'rt-del-adhoc',
     actual_destination: 'Balussery Outer Link',
     driver_notes: 'Haneefa run complete',
+    start_location: {
+      latitude: 11.2588,
+      longitude: 75.7804,
+      place_name: 'Delhivery Central Hub, West Hill',
+      accuracy: 10,
+      captured_at: `${getMonthDate(11)}T08:10:00Z`,
+    },
+    end_location: {
+      latitude: 11.4485,
+      longitude: 75.8236,
+      place_name: 'Balussery Town Delivery Point, Kozhikode',
+      accuracy: 18,
+      captured_at: `${getMonthDate(11)}T16:20:00Z`,
+    },
     created_at: `${getMonthDate(11)}T08:10:00Z`,
     updated_at: `${getMonthDate(11)}T16:20:00Z`,
   },
@@ -1147,6 +1211,9 @@ export const INITIAL_TRIPS: Trip[] = [
     assigned_route_id: 'rt-del-adhoc',
     actual_destination: 'Elathur & Puthiyangadi Hub',
     driver_notes: 'All items handed over',
+    // Testing location unavailable scenario
+    start_location: null,
+    end_location: null,
     created_at: `${getMonthDate(14)}T07:15:00Z`,
     updated_at: `${getMonthDate(14)}T15:25:00Z`,
   },
@@ -1162,6 +1229,20 @@ export const INITIAL_TRIPS: Trip[] = [
     assigned_route_id: 'rt-del-adhoc',
     actual_destination: 'Ad-hoc cluster delivery',
     driver_notes: 'Tyre puncture fixed during trip',
+    start_location: {
+      latitude: 11.2588,
+      longitude: 75.7804,
+      place_name: 'Delhivery Central Hub, West Hill',
+      accuracy: 9,
+      captured_at: `${getMonthDate(17)}T07:40:00Z`,
+    },
+    end_location: {
+      latitude: 11.312,
+      longitude: 75.765,
+      place_name: 'Elathur Express Depot, Calicut',
+      accuracy: 16,
+      captured_at: `${getMonthDate(17)}T15:55:00Z`,
+    },
     created_at: `${getMonthDate(17)}T07:40:00Z`,
     updated_at: `${getMonthDate(17)}T15:55:00Z`,
   },

@@ -210,12 +210,8 @@ export function CompleteTripModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={lang === 'ml' ? 'വണ്ടി ട്രിപ്പ് പൂർത്തിയാക്കുക' : 'Active Vehicle Usage'}
-      description={
-        lang === 'ml'
-          ? 'ഡൽഹിവെറി മോഡൽ ട്രിപ്പ് കൺഫർമേഷൻ & ചിലവുകൾ ക്ലിയർ ചെയ്യൽ'
-          : 'Confirm usage distance, duration, and clear trip expenses'
-      }
+      title="Active Vehicle Usage"
+      description="Confirm usage distance, duration, and clear trip expenses"
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -248,7 +244,7 @@ export function CompleteTripModal({
 
         {/* Usage Section Header */}
         <div className="text-xs font-bold text-slate-600 px-1">
-          {lang === 'ml' ? 'ട്രിപ്പ് വിവരങ്ങൾ (Confirm Usage)' : 'Recent Usage (Confirm within 3 days)'}
+          Recent Usage (Confirm within 3 days)
         </div>
 
         {/* Big Clean Delhivery Usage Box */}
@@ -256,7 +252,7 @@ export function CompleteTripModal({
           {/* Total Distance Input */}
           <div>
             <label className="block text-xs font-bold text-slate-600 mb-1.5">
-              {lang === 'ml' ? 'ആകെ ഓടിയ ദൂരം (Total Distance KM)' : 'Total Distance'}
+              Total Distance
             </label>
             <div className="relative">
               <input
@@ -273,7 +269,7 @@ export function CompleteTripModal({
             </div>
             {/* End Odometer reference */}
             <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1.5 px-1">
-              <span>{lang === 'ml' ? 'അവസാന റീഡിംഗ് (End KM):' : 'End Odometer:'}</span>
+              <span>End Odometer:</span>
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
@@ -291,7 +287,7 @@ export function CompleteTripModal({
           {/* Total Duration Stepper / Display */}
           <div>
             <label className="block text-xs font-bold text-slate-600 mb-1.5">
-              {lang === 'ml' ? 'ആകെ സമയം (Total Duration)' : 'Total Duration'}
+              Total Duration
             </label>
             <div className="flex items-center justify-between border border-slate-200 bg-slate-50 rounded-xl px-3 py-2.5">
               <button
@@ -349,12 +345,10 @@ export function CompleteTripModal({
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-xs font-black text-slate-900 block">
-                  {lang === 'ml' ? 'വണ്ടിയുടെ ചിലവുകൾ ക്ലിയർ ചെയ്യുക' : 'Trip Expenses & Clearances'}
+                  Trip Expenses & Clearances
                 </span>
                 <span className="text-[10px] text-slate-500">
-                  {lang === 'ml'
-                    ? 'സബ്മിറ്റ് ചെയ്യുന്നതിന് മുൻപ് ചിലവുകൾ രേഖപ്പെടുത്തുക'
-                    : 'Add fuel, toll, maintenance & parking before submitting'}
+                  Add fuel, toll, maintenance & parking before submitting
                 </span>
               </div>
               {totalExpenseAmount > 0 && (
@@ -376,7 +370,7 @@ export function CompleteTripModal({
                 }`}
               >
                 <Fuel className="w-4 h-4" />
-                <span>{lang === 'ml' ? 'ഡീസൽ' : 'Fuel'}</span>
+                <span>Fuel</span>
               </button>
 
               <button
@@ -389,7 +383,7 @@ export function CompleteTripModal({
                 }`}
               >
                 <Receipt className="w-4 h-4" />
-                <span>{lang === 'ml' ? 'ടോൾ' : 'Toll'}</span>
+                <span>Toll</span>
               </button>
 
               <button
@@ -404,7 +398,7 @@ export function CompleteTripModal({
                 }`}
               >
                 <Wrench className="w-4 h-4" />
-                <span>{lang === 'ml' ? 'പണി' : 'Repair'}</span>
+                <span>Repair</span>
               </button>
 
               <button
@@ -419,7 +413,7 @@ export function CompleteTripModal({
                 }`}
               >
                 <CreditCard className="w-4 h-4" />
-                <span>{lang === 'ml' ? 'പാർക്കിംഗ്' : 'Parking'}</span>
+                <span>Parking</span>
               </button>
             </div>
 
@@ -428,7 +422,7 @@ export function CompleteTripModal({
               <div className="bg-slate-50 border border-slate-300 rounded-xl p-3 space-y-2.5 animate-fadeIn">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-800">
                   <span>
-                    ➕ {lang === 'ml' ? 'ചിലവ് ചേർക്കുക:' : 'Add Expense:'} {activeExpenseForm}
+                    ➕ Add Expense: {activeExpenseForm}
                   </span>
                   <button
                     type="button"
@@ -442,7 +436,7 @@ export function CompleteTripModal({
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                      {lang === 'ml' ? 'തുക (Amount ₹) *' : 'Amount (₹) *'}
+                      Amount (₹) *
                     </label>
                     <input
                       type="number"
@@ -457,7 +451,7 @@ export function CompleteTripModal({
                   {activeExpenseForm === 'Fuel' ? (
                     <div>
                       <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                        {lang === 'ml' ? 'ലിറ്റർ (Litres)' : 'Litres'}
+                        Litres
                       </label>
                       <input
                         type="number"
@@ -471,7 +465,7 @@ export function CompleteTripModal({
                   ) : (
                     <div>
                       <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
-                        {lang === 'ml' ? 'വിവരണം / സ്ഥലം' : 'Note / Garage / Plaza'}
+                        Note / Garage / Plaza
                       </label>
                       <input
                         type="text"
@@ -488,7 +482,7 @@ export function CompleteTripModal({
                   <div>
                     <input
                       type="text"
-                      placeholder={lang === 'ml' ? 'പമ്പ് പേര് (ഉദാ: IOCL ബൈപാസ്)' : 'Pump name / Note'}
+                      placeholder="Pump name / Note"
                       value={expNote}
                       onChange={(e) => setExpNote(e.target.value)}
                       className="w-full text-xs px-3 py-1.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -575,9 +569,7 @@ export function CompleteTripModal({
           >
             <CheckCircle className="w-5 h-5" />
             <span>
-              {isLoading
-                ? (lang === 'ml' ? 'സബ്മിറ്റ് ചെയ്യുന്നു...' : 'Confirming...')
-                : (lang === 'ml' ? 'കൺഫേം ചെയ്യുക (Confirm)' : 'Confirm')}
+              {isLoading ? 'Confirming...' : 'Confirm'}
             </span>
           </button>
         </div>
@@ -596,7 +588,7 @@ export function CompleteTripModal({
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2">
               <input
                 type="text"
-                placeholder={lang === 'ml' ? 'ട്രിപ്പ് കുറിപ്പുകൾ (ഓപ്ഷണൽ)' : 'Trip notes / route details'}
+                placeholder="Trip notes / route details"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 className="w-full text-xs px-3 py-2 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -608,7 +600,7 @@ export function CompleteTripModal({
                   onChange={(e) => setIsFinalTrip(e.target.checked)}
                   className="rounded text-blue-600"
                 />
-                <span>{lang === 'ml' ? 'ഇന്നത്തെ അവസാന ട്രിപ്പ് (Final Duty Trip)' : 'Mark duty complete for today'}</span>
+                <span>Mark duty complete for today</span>
               </label>
             </div>
           )}

@@ -17,22 +17,22 @@ export function MobileBottomNav() {
 
   const mobileNavItems = [
     {
-      label: lang === 'ml' ? 'ഇന്നത്തെ ഓട്ടം' : 'Dashboard',
+      label: 'Dashboard',
       href: '/dashboard',
       icon: LayoutDashboard,
     },
     {
-      label: lang === 'ml' ? 'ഡ്രൈവർ കണക്ക്' : 'Driver Work',
+      label: 'Driver Work',
       href: '/reports',
       icon: BarChart3,
     },
     {
-      label: lang === 'ml' ? 'വണ്ടി ചിലവ്' : 'Vehicle Exp',
+      label: 'Vehicle Exp',
       href: '/vehicles',
       icon: Truck,
     },
     {
-      label: lang === 'ml' ? 'ഡ്യൂട്ടി' : 'Duty',
+      label: 'Duty',
       href: '/assignments',
       icon: CalendarCheck2,
     },
