@@ -155,7 +155,7 @@ function LoginFormContent() {
                   <Phone className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="tel"
-                    placeholder="e.g. 9400112233"
+                    placeholder="Enter your mobile number"
                     value={driverPhone}
                     onChange={(e) => setDriverPhone(e.target.value)}
                     className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
@@ -166,22 +166,18 @@ function LoginFormContent() {
 
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  4-Digit PIN
+                  Password
                 </label>
                 <div className="relative">
                   <KeyRound className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="password"
-                    maxLength={4}
-                    placeholder="e.g. 1234"
+                    placeholder="Enter your password"
                     value={driverPin}
                     onChange={(e) => setDriverPin(e.target.value)}
-                    className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-lg font-mono font-bold tracking-widest text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
+                    className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
                   />
                 </div>
-                <p className="text-[11px] text-gray-400">
-                  Enter the 4-digit PIN provided by your fleet owner.
-                </p>
               </div>
 
               <button
