@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
 import { Profile } from '@/types/database';
 import { Bell, LogOut, Check, Smartphone, Shield, RefreshCw } from 'lucide-react';
+import { InstallPwaButton } from '@/components/layout/InstallPwaButton';
 
 interface MoveIQTopBarProps {
   title?: string;
@@ -102,18 +103,20 @@ export function MoveIQTopBar({
           </div>
         </div>
 
-        {/* Right: Round User Profile Avatar */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-xs ring-1 ring-gray-200/90 active:scale-95 transition-transform flex items-center justify-center bg-gray-100 cursor-pointer"
-            aria-label="User profile"
-          >
-            <div className="w-full h-full bg-[#121316] text-white flex items-center justify-center font-bold text-sm tracking-wide">
-              {profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : 'K'}
-            </div>
-          </button>
+        {/* Right: Install App Button & User Profile Avatar */}
+        <div className="flex items-center gap-2">
+          <InstallPwaButton className="hidden sm:inline-flex !bg-[#121316] hover:!bg-black !text-white !font-bold !text-xs !py-2 !px-3.5 !rounded-2xl shadow-xs" />
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-xs ring-1 ring-gray-200/90 active:scale-95 transition-transform flex items-center justify-center bg-gray-100 cursor-pointer"
+              aria-label="User profile"
+            >
+              <div className="w-full h-full bg-[#121316] text-white flex items-center justify-center font-bold text-sm tracking-wide">
+                {profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : 'K'}
+              </div>
+            </button>
 
           {/* User dropdown menu */}
           {isMenuOpen && (
@@ -185,6 +188,10 @@ export function MoveIQTopBar({
                   </button>
                 </div>
 
+                <div className="py-2 border-b border-gray-100 sm:hidden">
+                  <InstallPwaButton className="w-full justify-center !bg-[#121316] hover:!bg-black !text-white !font-bold !py-2.5 !rounded-2xl" />
+                </div>
+
                 <div className="pt-2">
                   <button
                     type="button"
@@ -198,6 +205,7 @@ export function MoveIQTopBar({
               </div>
             </>
           )}
+          </div>
         </div>
       </header>
 

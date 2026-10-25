@@ -137,22 +137,29 @@ export function DriverDetailView({
     e.preventDefault();
     if (!driver) return;
     setDriverEditError(null);
-    setIsSubmittingDriver(true);
+    const targetId = driver.id;
+    const name = editName.trim();
+    const phone = editPhone.trim();
+    const pin = editPin.trim() || '1234';
+    const isActive = editIsActive;
+
+    // Instantly close modal and update driver state in 0ms!
+    setIsEditDriverOpen(false);
+    setDriver((prev) => (prev ? { ...prev, full_name: name, phone, pin, is_active: isActive } : prev));
+    showSavedNotice('Driver details saved successfully!');
+
     try {
-      await dataRepo.updateDriver(driver.id, {
-        full_name: editName.trim(),
-        phone: editPhone.trim(),
-        pin: editPin.trim() || '1234',
-        is_active: editIsActive,
+      await dataRepo.updateDriver(targetId, {
+        full_name: name,
+        phone,
+        pin,
+        is_active: isActive,
       });
-      setIsEditDriverOpen(false);
-      showSavedNotice('Driver details saved successfully!');
-      await loadDriverData();
+      loadDriverData();
       if (onDriverUpdated) onDriverUpdated();
     } catch (err: unknown) {
       setDriverEditError(err instanceof Error ? err.message : 'Failed to update driver');
-    } finally {
-      setIsSubmittingDriver(false);
+      setIsEditDriverOpen(true);
     }
   };
 

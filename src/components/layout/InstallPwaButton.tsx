@@ -63,57 +63,68 @@ export function InstallPwaButton({ className = '' }: { className?: string }) {
       <button
         onClick={handleInstallClick}
         type="button"
-        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer ${className}`}
+        className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#121316] hover:bg-black text-white text-xs font-bold shadow-xs transition-all active:scale-95 cursor-pointer ${className}`}
         title="Install app to home screen"
       >
-        <Download className="w-3.5 h-3.5 animate-bounce" />
+        <Smartphone className="w-3.5 h-3.5 text-[#D4F65B]" />
         <span>Install App</span>
       </button>
 
       {/* Mobile Instructions Modal */}
       {showInstructions && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
-          <div className="bg-slate-900 border border-slate-700 text-white rounded-2xl p-5 max-w-sm w-full space-y-4 shadow-2xl animate-in fade-in">
-            <div className="flex items-center justify-between">
+          <div className="bg-white text-[#121316] rounded-3xl p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2">
-                <Smartphone className="w-5 h-5 text-emerald-400" />
-                <h3 className="text-sm font-bold">
-                  Install Nalakath Logistics App
-                </h3>
+                <div className="w-9 h-9 rounded-full bg-[#121316] flex items-center justify-center text-[#D4F65B]">
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black tracking-tight">
+                    Nalakath Logistics App
+                  </h3>
+                  <p className="text-[10px] text-gray-500 font-medium">
+                    Install as high-speed mobile app
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setShowInstructions(false)}
-                className="p-1 text-slate-400 hover:text-white"
+                className="p-1 text-gray-400 hover:text-black cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
-              <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700 space-y-2">
-                <p className="font-bold text-white flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  Android Chrome:
+            <div className="space-y-3 text-xs text-gray-600 leading-relaxed">
+              <div className="bg-[#F8F9FA] p-3.5 rounded-2xl border border-gray-200/80 space-y-1.5">
+                <p className="font-bold text-gray-900 flex items-center gap-1.5 text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  Android Phone (Chrome):
                 </p>
-                <p className="text-slate-300 text-[11px]">
-                  Tap the 3 dots menu (⋮) at top right and choose &quot;Add to Home screen&quot; or &quot;Install App&quot;.
+                <p className="text-[11px] text-gray-600 leading-normal">
+                  Tap the 3 dots menu (⋮) at top right and choose <b>&quot;Add to Home screen&quot;</b> or <b>&quot;Install App&quot;</b>.
                 </p>
               </div>
 
-              <div className="bg-slate-800/80 p-3 rounded-xl border border-slate-700 space-y-2">
-                <p className="font-bold text-white flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
-                  iPhone Safari:
+              <div className="bg-[#F8F9FA] p-3.5 rounded-2xl border border-gray-200/80 space-y-1.5">
+                <p className="font-bold text-gray-900 flex items-center gap-1.5 text-xs">
+                  <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" />
+                  iPhone (Safari):
                 </p>
-                <p className="text-slate-300 text-[11px]">
-                  Tap the Share icon at bottom and select &quot;Add to Home Screen&quot;.
+                <p className="text-[11px] text-gray-600 leading-normal">
+                  Tap the Share icon at bottom and select <b>&quot;Add to Home Screen&quot;</b>.
                 </p>
+              </div>
+
+              <div className="p-2.5 bg-emerald-50 text-emerald-800 rounded-xl text-[11px] font-semibold text-center">
+                Instant launch with zero lag, full-screen view &amp; offline capability!
               </div>
             </div>
 
             <button
               onClick={() => setShowInstructions(false)}
-              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+              className="w-full h-11 rounded-2xl bg-[#121316] hover:bg-black text-white text-xs font-bold cursor-pointer"
             >
               Got it
             </button>

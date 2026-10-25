@@ -112,28 +112,39 @@ export function DriversListView() {
   const handleAddDriver = async (e: React.FormEvent) => {
     e.preventDefault();
     setAddError(null);
-    if (!addName.trim() || !addPhone.trim()) {
+    const name = addName.trim();
+    const phone = addPhone.trim();
+    const pin = addPin.trim() || '1234';
+
+    if (!name || !phone) {
       setAddError('Name and phone number are required');
       return;
     }
 
-    setIsSubmittingAdd(true);
+    // Instantly close modal and reset inputs (0ms latency!)
+    setIsAddDriverOpen(false);
+    setAddName('');
+    setAddPhone('');
+    setAddPin('1234');
+    showSavedNotice('Registering driver...');
+
     try {
-      await dataRepo.createDriver({
-        full_name: addName.trim(),
-        phone: addPhone.trim(),
-        pin: addPin.trim() || '1234',
+      const newDriver = await dataRepo.createDriver({
+        full_name: name,
+        phone,
+        pin,
       });
-      setIsAddDriverOpen(false);
-      setAddName('');
-      setAddPhone('');
-      setAddPin('1234');
+      if (newDriver) {
+        setDrivers((prev) => [newDriver, ...prev.filter((d) => d.id !== newDriver.id)]);
+      }
       showSavedNotice('New driver registered successfully!');
-      await loadData();
+      loadData();
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Failed to add driver');
-    } finally {
-      setIsSubmittingAdd(false);
+      setIsAddDriverOpen(true);
+      setAddName(name);
+      setAddPhone(phone);
+      setAddPin(pin);
     }
   };
 
@@ -151,21 +162,34 @@ export function DriversListView() {
     e.preventDefault();
     if (!editingDriver) return;
     setEditError(null);
-    setIsSubmittingEdit(true);
+    const targetDriver = editingDriver;
+    const name = editName.trim();
+    const phone = editPhone.trim();
+    const pin = editPin.trim() || '1234';
+    const isActive = editIsActive;
+
+    // Instantly close modal and update local state (0ms latency!)
+    setEditingDriver(null);
+    setDrivers((prev) =>
+      prev.map((d) =>
+        d.id === targetDriver.id
+          ? { ...d, full_name: name, phone, pin, is_active: isActive }
+          : d
+      )
+    );
+    showSavedNotice('Driver details saved!');
+
     try {
-      await dataRepo.updateDriver(editingDriver.id, {
-        full_name: editName.trim(),
-        phone: editPhone.trim(),
-        pin: editPin.trim() || '1234',
-        is_active: editIsActive,
+      await dataRepo.updateDriver(targetDriver.id, {
+        full_name: name,
+        phone,
+        pin,
+        is_active: isActive,
       });
-      setEditingDriver(null);
-      showSavedNotice('Driver details saved!');
-      await loadData();
+      loadData();
     } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : 'Failed to edit driver');
-    } finally {
-      setIsSubmittingEdit(false);
+      alert(err instanceof Error ? err.message : 'Failed to edit driver');
+      loadData();
     }
   };
 

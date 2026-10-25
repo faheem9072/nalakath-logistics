@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
 import { Phone, Lock, ArrowRight, Shield, Smartphone, AlertCircle, KeyRound } from 'lucide-react';
+import { InstallPwaButton } from '@/components/layout/InstallPwaButton';
 
 function LoginFormContent() {
   const router = useRouter();
@@ -97,6 +98,9 @@ function LoginFormContent() {
           <p className="text-xs text-gray-500 font-medium pt-1">
             Sign in to start trips or manage fleet operations
           </p>
+          <div className="flex justify-center pt-1">
+            <InstallPwaButton className="!bg-[#121316] hover:!bg-black !text-white !font-bold !text-xs !py-2 !px-4 !rounded-2xl !shadow-xs" />
+          </div>
         </div>
 
         {/* Main Card */}

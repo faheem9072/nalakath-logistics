@@ -15,23 +15,27 @@ export async function POST(req: NextRequest) {
 
     let driver: any = null;
 
-    // 1. Check Firestore cloud database first (ground truth across all Vercel lambdas)
-    const firestoreDriver = await fetchDriverByPhoneFromFirestore(phone);
-    if (firestoreDriver) {
-      const expectedPin = firestoreDriver.pin || '1234';
-      if (expectedPin.trim() === pin.trim() || pin.trim() === '123456') {
-        fleetDb.upsertDriverRecord(firestoreDriver);
-        driver = firestoreDriver;
-      } else {
-        return NextResponse.json({ error: 'Incorrect 4-digit PIN. Please try again.' }, { status: 401 });
+    // 1. Fast path: Check local SQLite database first (instant 1ms login)
+    try {
+      driver = fleetDb.loginDriver(phone, pin);
+    } catch (localErr: any) {
+      if (localErr?.message?.includes('PIN')) {
+        return NextResponse.json({ error: localErr.message }, { status: 401 });
       }
-    } else {
-      // 2. Fallback to local SQLite if offline or not in Firestore
-      try {
-        driver = fleetDb.loginDriver(phone, pin);
-      } catch (e: any) {
+
+      // 2. Fallback: If phone is not in local SQLite (e.g. cold lambda or newly registered), query Firestore
+      const firestoreDriver = await fetchDriverByPhoneFromFirestore(phone);
+      if (firestoreDriver) {
+        const expectedPin = firestoreDriver.pin || '1234';
+        if (expectedPin.trim() === pin.trim() || pin.trim() === '123456') {
+          fleetDb.upsertDriverRecord(firestoreDriver);
+          driver = firestoreDriver;
+        } else {
+          return NextResponse.json({ error: 'Incorrect 4-digit PIN. Please try again.' }, { status: 401 });
+        }
+      } else {
         return NextResponse.json(
-          { error: e.message || 'This mobile number is not registered. Please contact the owner.' },
+          { error: 'This mobile number is not registered. Please contact the owner.' },
           { status: 401 }
         );
       }
