@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { dataRepo } from '@/lib/data-service';
+import { db, isFirebaseConfigured } from '@/lib/firebase/config';
+import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { Vehicle, ClientCompany, VehicleType } from '@/types/database';
 import { MoveIQSearchBar } from '@/components/moveiq/MoveIQSearchBar';
 import { MoveIQFilterChips } from '@/components/moveiq/MoveIQFilterChips';
@@ -36,6 +38,9 @@ export function VehiclesListView() {
   const [selectedVehicleReg, setSelectedVehicleReg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Keep a ref of raw vehicles for active trip updates
+  const rawVehiclesRef = useRef<Vehicle[]>([]);
+
   // Add Vehicle Modal
   const [isAddVehicleOpen, setIsAddVehicleOpen] = useState(false);
   const [regNo, setRegNo] = useState('');
@@ -66,43 +71,99 @@ export function VehiclesListView() {
     setTimeout(() => setSavedNotice(null), 3500);
   };
 
-  const loadVehicles = async () => {
-    try {
-      const allVehicles = await dataRepo.getVehicles();
-      const enhanced: VehicleWithStatus[] = allVehicles.map((v) => {
-        const live = dataRepo.getActiveTripForVehicle(v.id);
-        if (live) {
-          return {
-            ...v,
-            activeTripInfo: {
-              driverName: live.driver.full_name,
-              driverPhone: live.driver.phone,
-              startOdo: live.trip.start_odometer || v.current_odometer,
-              startTime: live.trip.start_time || 'Just now',
-            },
-          };
-        }
+  const enhanceVehicles = (list: Vehicle[]): VehicleWithStatus[] => {
+    return list.map((v) => {
+      const live = dataRepo.getActiveTripForVehicle(v.id);
+      if (live) {
         return {
           ...v,
-          activeTripInfo: null,
+          activeTripInfo: {
+            driverName: live.driver.full_name,
+            driverPhone: live.driver.phone,
+            startOdo: live.trip.start_odometer || v.current_odometer,
+            startTime: live.trip.start_time || 'Just now',
+          },
         };
-      });
+      }
+      return {
+        ...v,
+        activeTripInfo: null,
+      };
+    });
+  };
 
-      setVehicles(enhanced);
+  const loadVehiclesFallback = async () => {
+    try {
+      const allVehicles = await dataRepo.getVehicles();
+      rawVehiclesRef.current = allVehicles;
+      setVehicles(enhanceVehicles(allVehicles));
     } catch (err) {
-      console.error('Failed to load vehicles:', err);
+      console.error('Failed to load vehicles fallback:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadVehicles();
-    const unsub = dataRepo.subscribe(loadVehicles);
-    const interval = setInterval(loadVehicles, 3000);
+    let unsubFirestore: (() => void) | null = null;
+
+    if (isFirebaseConfigured && db) {
+      try {
+        unsubFirestore = onSnapshot(
+          collection(db, 'vehicles'),
+          (snapshot) => {
+            const list: Vehicle[] = snapshot.docs.map((docSnap) => {
+              const data = docSnap.data();
+              return {
+                id: docSnap.id,
+                registration_number: data.registration_number || '',
+                make_model: data.make_model || '',
+                company: data.company || data.company_name || 'Delhivery',
+                company_id: data.company_id || undefined,
+                route_location: data.route_location || '',
+                vehicle_type: data.vehicle_type || 'truck',
+                capacity: data.capacity || 2,
+                initial_km: typeof data.initial_km === 'number' ? data.initial_km : parseFloat(data.initial_km) || 0,
+                current_odometer: typeof data.current_odometer === 'number' ? data.current_odometer : parseFloat(data.current_odometer) || 0,
+                is_active: data.is_active !== false && data.status !== 'inactive',
+                status: (data.status as any) || (data.is_active === false ? 'inactive' : 'active'),
+                created_at: data.created_at || new Date().toISOString(),
+                updated_at: data.updated_at || new Date().toISOString(),
+                notes: data.notes || null,
+              };
+            });
+
+            // Sort vehicles alphabetically by registration number
+            list.sort((a, b) => a.registration_number.localeCompare(b.registration_number));
+            rawVehiclesRef.current = list;
+            setVehicles(enhanceVehicles(list));
+            setIsLoading(false);
+          },
+          (err) => {
+            console.error('Firestore vehicles onSnapshot error:', err);
+            loadVehiclesFallback();
+          }
+        );
+      } catch (err) {
+        console.error('Failed to attach vehicles onSnapshot:', err);
+        loadVehiclesFallback();
+      }
+    } else {
+      loadVehiclesFallback();
+    }
+
+    // Also listen to trip status changes to re-evaluate activeTripInfo
+    const unsubRepo = dataRepo.subscribe(() => {
+      if (rawVehiclesRef.current.length > 0) {
+        setVehicles(enhanceVehicles(rawVehiclesRef.current));
+      } else {
+        loadVehiclesFallback();
+      }
+    });
+
     return () => {
-      unsub();
-      clearInterval(interval);
+      if (unsubFirestore) unsubFirestore();
+      unsubRepo();
     };
   }, []);
 
@@ -116,26 +177,55 @@ export function VehiclesListView() {
 
     setIsSubmittingAdd(true);
     try {
+      const cleanReg = regNo.trim().toUpperCase();
+      const numPart = cleanReg.replace(/\D/g, '').slice(-4) || Math.floor(1000 + Math.random() * 9000).toString();
+      const compPrefix = company.toLowerCase().includes('shadow') ? 'sfx' : 'del';
+      const newId = `veh-${compPrefix}-${numPart}`;
+      const odoVal = parseFloat(odometer) || 0;
+      const nowIso = new Date().toISOString();
+
+      if (isFirebaseConfigured && db) {
+        const vehicleRef = doc(db, 'vehicles', newId);
+        await setDoc(vehicleRef, {
+          id: newId,
+          registration_number: cleanReg,
+          make_model: makeModel.trim(),
+          company,
+          company_name: company,
+          route_location: routeLocation.trim() || '',
+          vehicle_type: vehicleType,
+          capacity: 2,
+          initial_km: odoVal,
+          current_odometer: odoVal,
+          status: 'active',
+          is_active: true,
+          notes: null,
+          created_at: nowIso,
+          updated_at: nowIso,
+        }, { merge: true });
+      }
+
       await dataRepo.createVehicle({
-        registration_number: regNo.trim().toUpperCase(),
+        registration_number: cleanReg,
         make_model: makeModel.trim(),
         company,
         route_location: routeLocation.trim() || undefined,
         vehicle_type: vehicleType,
         capacity: 2,
-        initial_km: parseFloat(odometer) || 0,
-        current_odometer: parseFloat(odometer) || 0,
+        initial_km: odoVal,
+        current_odometer: odoVal,
         status: 'active',
         notes: null,
-      });
+      }).catch((err) => console.warn('dataRepo.createVehicle secondary sync:', err));
+
       setIsAddVehicleOpen(false);
       setRegNo('');
       setMakeModel('');
       setRouteLocation('');
       setOdometer('0');
       showSavedNotice('New vehicle added successfully!');
-      await loadVehicles();
     } catch (err: unknown) {
+      console.error('Failed to add vehicle to Firestore:', err);
       setAddError(err instanceof Error ? err.message : 'Failed to add vehicle');
     } finally {
       setIsSubmittingAdd(false);
@@ -161,21 +251,49 @@ export function VehiclesListView() {
     if (!editingVehicle) return;
     setEditError(null);
     setIsSubmittingEdit(true);
+
+    const docId = editingVehicle.id;
+    const cleanReg = editRegNo.trim().toUpperCase();
+    const cleanModel = editMakeModel.trim();
+    const cleanLocation = editRouteLocation.trim();
+    const initialKmVal = parseFloat(editInitialKm) || 0;
+    const currentOdoVal = parseFloat(editOdo) || editingVehicle.current_odometer;
+    const nowIso = new Date().toISOString();
+
     try {
-      await dataRepo.updateVehicle(editingVehicle.id, {
-        registration_number: editRegNo.trim().toUpperCase(),
-        make_model: editMakeModel.trim(),
+      if (isFirebaseConfigured && db) {
+        const vehicleRef = doc(db, 'vehicles', docId);
+        await setDoc(vehicleRef, {
+          id: docId,
+          registration_number: cleanReg,
+          make_model: cleanModel,
+          company: editCompany,
+          company_name: editCompany,
+          route_location: cleanLocation,
+          vehicle_type: editType,
+          initial_km: initialKmVal,
+          current_odometer: currentOdoVal,
+          is_active: editIsActive,
+          status: editIsActive ? 'active' : 'inactive',
+          updated_at: nowIso,
+        }, { merge: true });
+      }
+
+      await dataRepo.updateVehicle(docId, {
+        registration_number: cleanReg,
+        make_model: cleanModel,
         company: editCompany,
-        route_location: editRouteLocation.trim() || undefined,
+        route_location: cleanLocation || undefined,
         vehicle_type: editType,
-        initial_km: parseFloat(editInitialKm) || undefined,
-        current_odometer: parseFloat(editOdo) || editingVehicle.current_odometer,
+        initial_km: initialKmVal,
+        current_odometer: currentOdoVal,
         is_active: editIsActive,
-      });
+      }).catch((err) => console.warn('dataRepo.updateVehicle secondary sync:', err));
+
       setEditingVehicle(null);
       showSavedNotice('Vehicle details saved!');
-      await loadVehicles();
     } catch (err: unknown) {
+      console.error('Failed to save vehicle to Firestore:', err);
       setEditError(err instanceof Error ? err.message : 'Failed to update vehicle');
     } finally {
       setIsSubmittingEdit(false);
@@ -185,9 +303,22 @@ export function VehiclesListView() {
   const handleArchiveVehicle = async (vehicleId: string, reg: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm(`Archive vehicle "${reg}"? Past trips and history will be preserved.`)) {
-      await dataRepo.archiveVehicle(vehicleId);
-      showSavedNotice('Vehicle marked inactive. Past trips preserved.');
-      await loadVehicles();
+      try {
+        if (isFirebaseConfigured && db) {
+          const vehicleRef = doc(db, 'vehicles', vehicleId);
+          await setDoc(vehicleRef, {
+            id: vehicleId,
+            is_active: false,
+            status: 'inactive',
+            updated_at: new Date().toISOString(),
+          }, { merge: true });
+        }
+        await dataRepo.archiveVehicle(vehicleId).catch(() => {});
+        showSavedNotice('Vehicle marked inactive. Past trips preserved.');
+      } catch (err) {
+        console.error('Failed to archive vehicle in Firestore:', err);
+        alert('Failed to archive vehicle: ' + (err instanceof Error ? err.message : String(err)));
+      }
     }
   };
 
@@ -197,7 +328,7 @@ export function VehiclesListView() {
       <VehicleDetailView
         vehicleQuery={selectedVehicleReg}
         onBack={() => setSelectedVehicleReg(null)}
-        onVehicleUpdated={loadVehicles}
+        onVehicleUpdated={loadVehiclesFallback}
       />
     );
   }

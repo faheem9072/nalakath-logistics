@@ -265,9 +265,11 @@ export function subscribeToFirestore(onRemoteChange: () => void): (() => void) |
 
   try {
     const unsubDrivers = onSnapshot(collection(db, 'drivers'), () => onRemoteChange(), () => {});
+    const unsubVehicles = onSnapshot(collection(db, 'vehicles'), () => onRemoteChange(), () => {});
     const unsubTrips = onSnapshot(collection(db, 'trips'), () => onRemoteChange(), () => {});
     return () => {
       unsubDrivers();
+      unsubVehicles();
       unsubTrips();
     };
   } catch {

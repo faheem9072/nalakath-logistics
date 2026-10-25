@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { dataRepo, DriverMonthlySummary } from '@/lib/data-service';
+import { db, isFirebaseConfigured } from '@/lib/firebase/config';
+import { doc, setDoc } from 'firebase/firestore';
 import { Driver, Vehicle } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
 import {
@@ -137,39 +139,75 @@ export function DriverDetailView({
     e.preventDefault();
     if (!driver) return;
     setDriverEditError(null);
+    setIsSubmittingDriver(true);
+
     const targetId = driver.id;
     const name = editName.trim();
     const phone = editPhone.trim();
     const pin = editPin.trim() || '1234';
     const isActive = editIsActive;
-
-    // Instantly close modal and update driver state in 0ms!
-    setIsEditDriverOpen(false);
-    setDriver((prev) => (prev ? { ...prev, full_name: name, phone, pin, is_active: isActive } : prev));
-    showSavedNotice('Driver details saved successfully!');
+    const nowIso = new Date().toISOString();
 
     try {
-      await dataRepo.updateDriver(targetId, {
-        full_name: name,
-        phone,
-        pin,
-        is_active: isActive,
-      });
-      loadDriverData();
+      if (isFirebaseConfigured && db) {
+        const driverRef = doc(db, 'drivers', targetId);
+        await setDoc(
+          driverRef,
+          {
+            id: targetId,
+            full_name: name,
+            phone: phone,
+            pin: pin,
+            is_active: isActive,
+            status: isActive ? (driver.status || 'idle') : 'inactive',
+            updated_at: nowIso,
+          },
+          { merge: true }
+        );
+      }
+
+      await dataRepo
+        .updateDriver(targetId, {
+          full_name: name,
+          phone,
+          pin,
+          is_active: isActive,
+        })
+        .catch((err) => console.warn('dataRepo.updateDriver secondary sync:', err));
+
+      setIsEditDriverOpen(false);
+      showSavedNotice('Driver details saved successfully!');
+      await loadDriverData();
       if (onDriverUpdated) onDriverUpdated();
     } catch (err: unknown) {
+      console.error('Failed to save driver to Firestore:', err);
       setDriverEditError(err instanceof Error ? err.message : 'Failed to update driver');
-      setIsEditDriverOpen(true);
+    } finally {
+      setIsSubmittingDriver(false);
     }
   };
 
   const handleArchiveDriver = async () => {
     if (!driver) return;
     if (confirm(`Archive driver "${driver.full_name}"? Past trips and history will be preserved.`)) {
-      await dataRepo.archiveDriver(driver.id);
-      showSavedNotice('Driver archived. Past trips preserved.');
-      if (onDriverUpdated) onDriverUpdated();
-      onBack();
+      try {
+        if (isFirebaseConfigured && db) {
+          const driverRef = doc(db, 'drivers', driver.id);
+          await setDoc(driverRef, {
+            id: driver.id,
+            is_active: false,
+            status: 'inactive',
+            updated_at: new Date().toISOString(),
+          }, { merge: true });
+        }
+        await dataRepo.archiveDriver(driver.id).catch(() => {});
+        showSavedNotice('Driver archived. Past trips preserved.');
+        if (onDriverUpdated) onDriverUpdated();
+        onBack();
+      } catch (err) {
+        console.error('Failed to archive driver in Firestore:', err);
+        alert('Failed to archive driver: ' + (err instanceof Error ? err.message : String(err)));
+      }
     }
   };
 

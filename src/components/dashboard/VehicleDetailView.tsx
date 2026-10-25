@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { dataRepo } from '@/lib/data-service';
+import { db, isFirebaseConfigured } from '@/lib/firebase/config';
+import { doc, setDoc } from 'firebase/firestore';
 import { VehicleDetailReport, ExpenseWithDetails, VehicleTravelHistoryTrip } from '@/types/models';
 import { Vehicle, ExpenseType, ClientCompany, VehicleType, Driver, TripLocation } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
@@ -199,24 +201,56 @@ export function VehicleDetailView({
     if (!report) return;
     setVehicleEditError(null);
     setIsSubmittingVehicle(true);
+
+    const targetId = report.vehicle.id;
+    const cleanReg = editRegNo.trim().toUpperCase();
+    const cleanModel = editModel.trim();
+    const cleanLocation = editRouteLocation.trim();
+    const initialKmVal = parseFloat(editInitialKm) || 0;
+    const currentOdoVal = parseFloat(editOdo) || report.vehicle.current_odometer;
+    const nowIso = new Date().toISOString();
+
     try {
       const selectedComp = companies.find((c) => c.id === editCompanyId);
-      await dataRepo.updateVehicle(report.vehicle.id, {
-        registration_number: editRegNo.trim().toUpperCase(),
-        make_model: editModel.trim(),
+      const compName = selectedComp?.name || editCompany;
+
+      if (isFirebaseConfigured && db) {
+        const vehicleRef = doc(db, 'vehicles', targetId);
+        await setDoc(vehicleRef, {
+          id: targetId,
+          registration_number: cleanReg,
+          make_model: cleanModel,
+          company_id: editCompanyId || undefined,
+          company: compName,
+          company_name: compName,
+          route_location: cleanLocation,
+          vehicle_type: editType,
+          initial_km: initialKmVal,
+          current_odometer: currentOdoVal,
+          is_active: editIsActive,
+          status: editIsActive ? 'active' : 'inactive',
+          updated_at: nowIso,
+        }, { merge: true });
+      }
+
+      await dataRepo.updateVehicle(targetId, {
+        registration_number: cleanReg,
+        make_model: cleanModel,
         company_id: editCompanyId || undefined,
-        company: selectedComp?.name || editCompany,
-        route_location: editRouteLocation.trim() || undefined,
+        company: compName,
+        route_location: cleanLocation || undefined,
         vehicle_type: editType,
-        initial_km: parseFloat(editInitialKm) || undefined,
-        current_odometer: parseFloat(editOdo) || report.vehicle.current_odometer,
+        initial_km: initialKmVal,
+        current_odometer: currentOdoVal,
         is_active: editIsActive,
-      });
+      }).catch((err) => console.warn('dataRepo.updateVehicle secondary sync:', err));
+
       setIsEditVehicleOpen(false);
       showSavedNotice('Vehicle details saved successfully!');
       await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
     } catch (err: unknown) {
+      console.error('Failed to save vehicle to Firestore:', err);
       setVehicleEditError(err instanceof Error ? err.message : 'Failed to update vehicle');
     } finally {
       setIsSubmittingVehicle(false);
@@ -226,10 +260,24 @@ export function VehicleDetailView({
   const handleArchiveVehicle = async () => {
     if (!report) return;
     if (confirm(`Archive vehicle "${report.vehicle.registration_number}"? Past trips and expense history will be preserved.`)) {
-      await dataRepo.archiveVehicle(report.vehicle.id);
-      showSavedNotice('Vehicle archived. Past trips preserved.');
-      if (onVehicleUpdated) onVehicleUpdated();
-      if (onBack) onBack();
+      try {
+        if (isFirebaseConfigured && db) {
+          const vehicleRef = doc(db, 'vehicles', report.vehicle.id);
+          await setDoc(vehicleRef, {
+            id: report.vehicle.id,
+            is_active: false,
+            status: 'inactive',
+            updated_at: new Date().toISOString(),
+          }, { merge: true });
+        }
+        await dataRepo.archiveVehicle(report.vehicle.id).catch(() => {});
+        showSavedNotice('Vehicle archived. Past trips preserved.');
+        if (onVehicleUpdated) onVehicleUpdated();
+        if (onBack) onBack();
+      } catch (err) {
+        console.error('Failed to archive vehicle in Firestore:', err);
+        alert('Failed to archive vehicle: ' + (err instanceof Error ? err.message : String(err)));
+      }
     }
   };
 

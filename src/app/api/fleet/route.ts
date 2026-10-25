@@ -124,56 +124,70 @@ export async function POST(req: NextRequest) {
       // 3. Drivers
       case 'createDriver': {
         const driver = fleetDb.createDriver(payload);
-        after(async () => {
-          await syncDriverToFirestore(driver).catch(() => {});
-        });
+        try {
+          await syncDriverToFirestore(driver);
+        } catch (e) {
+          console.error('Failed to sync created driver to Firestore:', e);
+        }
         return NextResponse.json({ success: true, driver });
       }
       case 'updateDriver': {
         const driver = fleetDb.updateDriver(payload.id, payload.data);
-        after(async () => {
-          await syncDriverToFirestore(driver).catch(() => {});
-        });
+        try {
+          await syncDriverToFirestore(driver);
+        } catch (e) {
+          console.error('Failed to sync updated driver to Firestore:', e);
+        }
         return NextResponse.json({ success: true, driver });
       }
       case 'allowDriverOverride': {
         fleetDb.allowDriverOverride(payload.driverId);
         const d = fleetDb.getDriver(payload.driverId);
         if (d) {
-          after(async () => {
-            await syncDriverToFirestore(d).catch(() => {});
-          });
+          try {
+            await syncDriverToFirestore(d);
+          } catch (e) {
+            console.error('Failed to sync driver override to Firestore:', e);
+          }
         }
         return NextResponse.json({ success: true });
       }
       case 'archiveDriver': {
         fleetDb.archiveDriver(payload.id);
-        after(async () => {
-          await syncDriverToFirestore({ id: payload.id, is_active: false }).catch(() => {});
-        });
+        try {
+          await syncDriverToFirestore({ id: payload.id, is_active: false });
+        } catch (e) {
+          console.error('Failed to sync archive driver to Firestore:', e);
+        }
         return NextResponse.json({ success: true });
       }
 
       // 4. Vehicles
       case 'createVehicle': {
         const vehicle = fleetDb.createVehicle(payload);
-        after(async () => {
-          await syncVehicleToFirestore(vehicle).catch(() => {});
-        });
+        try {
+          await syncVehicleToFirestore(vehicle);
+        } catch (e) {
+          console.error('Failed to sync created vehicle to Firestore:', e);
+        }
         return NextResponse.json({ success: true, vehicle });
       }
       case 'updateVehicle': {
         const vehicle = fleetDb.updateVehicle(payload.id, payload.data);
-        after(async () => {
-          await syncVehicleToFirestore(vehicle).catch(() => {});
-        });
+        try {
+          await syncVehicleToFirestore(vehicle);
+        } catch (e) {
+          console.error('Failed to sync updated vehicle to Firestore:', e);
+        }
         return NextResponse.json({ success: true, vehicle });
       }
       case 'archiveVehicle': {
         fleetDb.archiveVehicle(payload.id);
-        after(async () => {
-          await syncVehicleToFirestore({ id: payload.id, is_active: false }).catch(() => {});
-        });
+        try {
+          await syncVehicleToFirestore({ id: payload.id, is_active: false });
+        } catch (e) {
+          console.error('Failed to sync archive vehicle to Firestore:', e);
+        }
         return NextResponse.json({ success: true });
       }
 
