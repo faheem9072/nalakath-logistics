@@ -24,24 +24,15 @@ function LoginFormContent() {
 
   const [driverPhone, setDriverPhone] = useState('');
   const [driverPin, setDriverPin] = useState('');
-  const [ownerPassword, setOwnerPassword] = useState('kore2026');
+  const [ownerPassword, setOwnerPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Quick 1-tap demo drivers
-  const DEMO_DRIVERS = [
-    { name: 'Refnise', phone: '9400112233', pin: '1234', vehicle: 'KL 84 B 3057' },
-    { name: 'Haneefa', phone: '9400223344', pin: '1234', vehicle: 'KL 84 B 3057' },
-    { name: 'Firoz', phone: '9400334455', pin: '1234', vehicle: 'KL 02 BG 3443' },
-    { name: 'Ameer', phone: '9400445566', pin: '1234', vehicle: 'KL 57 X 7384' },
-    { name: 'Ashin', phone: '9400778899', pin: '1234', vehicle: 'KL 08 BP 5682' },
-  ];
-
-  const handleDriverLogin = async (e?: React.FormEvent, customPhone?: string, customPin?: string) => {
+  const handleDriverLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError(null);
-    const targetPhone = customPhone || driverPhone;
-    const targetPin = customPin || driverPin;
+    const targetPhone = driverPhone;
+    const targetPin = driverPin;
 
     if (!targetPhone.trim()) {
       setError('Please enter your registered mobile number');
@@ -189,7 +180,7 @@ function LoginFormContent() {
                   />
                 </div>
                 <p className="text-[11px] text-gray-400">
-                  Default PIN for demo drivers is 1234 (managed by owner).
+                  Enter the 4-digit PIN provided by your fleet owner.
                 </p>
               </div>
 
@@ -201,30 +192,6 @@ function LoginFormContent() {
                 <span>{isLoading ? 'Verifying...' : 'Login as Driver'}</span>
                 <ArrowRight className="w-4 h-4 text-[#D4F65B]" />
               </button>
-
-              {/* Quick 1-Tap Driver Select for Demo */}
-              <div className="pt-3 border-t border-gray-100 space-y-2">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block text-center">
-                  Quick 1-Tap Driver Login (Demo)
-                </span>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  {DEMO_DRIVERS.map((d) => (
-                    <button
-                      key={d.phone}
-                      type="button"
-                      onClick={() => handleDriverLogin(undefined, d.phone, d.pin)}
-                      className="p-2.5 rounded-2xl bg-[#F8F9FA] hover:bg-gray-100 border border-gray-200/70 text-left transition-colors cursor-pointer group"
-                    >
-                      <p className="font-bold text-gray-900 group-hover:text-black">
-                        {d.name}
-                      </p>
-                      <p className="text-[10px] text-gray-500 font-mono mt-0.5">
-                        {d.vehicle} • PIN: {d.pin}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-              </div>
             </form>
           )}
 
@@ -255,10 +222,6 @@ function LoginFormContent() {
                 <span>{isLoading ? 'Signing in...' : 'Sign In as Owner'}</span>
                 <ArrowRight className="w-4 h-4 text-[#D4F65B]" />
               </button>
-
-              <div className="p-3 bg-gray-50 rounded-2xl text-center text-xs text-gray-500">
-                Default Owner password: <span className="font-mono font-bold text-gray-800">kore2026</span>
-              </div>
             </form>
           )}
         </div>
