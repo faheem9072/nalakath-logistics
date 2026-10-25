@@ -87,15 +87,84 @@ export async function syncFleetToFirestore(state: FleetState): Promise<boolean> 
 }
 
 /**
+ * Fetch all drivers from Firestore
+ */
+export async function fetchDriversFromFirestore(): Promise<any[]> {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(collection(db, 'drivers'));
+    const drivers: any[] = [];
+    snap.forEach((doc) => {
+      const data = doc.data();
+      if (data && data.id) {
+        drivers.push(data);
+      }
+    });
+    return drivers;
+  } catch (err) {
+    console.warn('Failed to fetch drivers from Firestore:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch driver by phone number directly from Firestore (supports any phone format, checking last 10 digits)
+ */
+export async function fetchDriverByPhoneFromFirestore(phone: string): Promise<any | null> {
+  if (!isFirebaseConfigured || !db) return null;
+  try {
+    const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+    const snap = await getDocs(collection(db, 'drivers'));
+    let matched: any = null;
+    snap.forEach((doc) => {
+      const d = doc.data();
+      if (!d) return;
+      const dPhoneDigits = String(d.phone || '').replace(/\D/g, '').slice(-10);
+      if (dPhoneDigits === cleanPhone && d.is_active !== false && d.is_active !== 0) {
+        matched = d;
+      }
+    });
+    return matched;
+  } catch (err) {
+    console.warn('Failed to find driver by phone in Firestore:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch all vehicles from Firestore
+ */
+export async function fetchVehiclesFromFirestore(): Promise<any[]> {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(collection(db, 'vehicles'));
+    const vehicles: any[] = [];
+    snap.forEach((doc) => {
+      const data = doc.data();
+      if (data && data.id) {
+        vehicles.push(data);
+      }
+    });
+    return vehicles;
+  } catch (err) {
+    console.warn('Failed to fetch vehicles from Firestore:', err);
+    return [];
+  }
+}
+
+/**
  * Automatically sync a single driver to Firestore in real-time
  */
 export async function syncDriverToFirestore(driver: {
   id: string;
+  employee_code?: string;
   full_name?: string;
+  fullName?: string;
   phone?: string;
   pin?: string;
   status?: string;
   is_active?: boolean | number;
+  allow_next_trip_override?: number;
   [key: string]: any;
 }): Promise<boolean> {
   if (!isFirebaseConfigured || !db || !driver?.id) return false;
@@ -103,11 +172,13 @@ export async function syncDriverToFirestore(driver: {
     const ref = doc(db, 'drivers', driver.id);
     await setDoc(ref, {
       id: driver.id,
-      full_name: driver.full_name,
-      phone: driver.phone,
+      employee_code: driver.employee_code || '',
+      full_name: driver.full_name || driver.fullName || '',
+      phone: driver.phone || '',
       pin: driver.pin || '1234',
       status: driver.status || 'idle',
       is_active: driver.is_active !== false && driver.is_active !== 0,
+      allow_next_trip_override: driver.allow_next_trip_override ? 1 : 0,
       updated_at: new Date().toISOString(),
     }, { merge: true });
     return true;

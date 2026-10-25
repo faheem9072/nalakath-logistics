@@ -5,10 +5,31 @@ import {
   syncVehicleToFirestore,
   syncTripToFirestore,
   syncExpenseToFirestore,
+  fetchDriversFromFirestore,
+  fetchVehiclesFromFirestore,
 } from '@/lib/firebase/sync';
 
 export async function GET() {
   try {
+    try {
+      const [remoteDrivers, remoteVehicles] = await Promise.all([
+        fetchDriversFromFirestore(),
+        fetchVehiclesFromFirestore(),
+      ]);
+      if (remoteDrivers && remoteDrivers.length > 0) {
+        for (const d of remoteDrivers) {
+          fleetDb.upsertDriverRecord(d);
+        }
+      }
+      if (remoteVehicles && remoteVehicles.length > 0) {
+        for (const v of remoteVehicles) {
+          fleetDb.upsertVehicleRecord(v);
+        }
+      }
+    } catch (hydrateErr) {
+      console.warn('Hydration from Firestore skipped/failed:', hydrateErr);
+    }
+
     const data = fleetDb.getAllData();
     return NextResponse.json(data);
   } catch (err: unknown) {
@@ -29,22 +50,22 @@ export async function POST(req: NextRequest) {
       // 1. Trips
       case 'startTrip': {
         const trip = fleetDb.startTrip(payload);
-        syncTripToFirestore(trip).catch(() => {});
+        await syncTripToFirestore(trip).catch(() => {});
         return NextResponse.json({ success: true, trip });
       }
       case 'endTrip': {
         const result = fleetDb.endTrip(payload);
-        if (result?.trip) syncTripToFirestore(result.trip).catch(() => {});
+        if (result?.trip) await syncTripToFirestore(result.trip).catch(() => {});
         return NextResponse.json({ success: true, ...result });
       }
       case 'updateTrip': {
         const trip = fleetDb.updateTrip(payload.id, payload.data);
-        syncTripToFirestore(trip).catch(() => {});
+        await syncTripToFirestore(trip).catch(() => {});
         return NextResponse.json({ success: true, trip });
       }
       case 'addManualTrip': {
         const trip = fleetDb.addManualTrip(payload);
-        syncTripToFirestore(trip).catch(() => {});
+        await syncTripToFirestore(trip).catch(() => {});
         return NextResponse.json({ success: true, trip });
       }
       case 'deleteTrip': {
@@ -55,7 +76,7 @@ export async function POST(req: NextRequest) {
       // 2. Expenses
       case 'createExpense': {
         const expense = fleetDb.createExpense(payload);
-        syncExpenseToFirestore(expense).catch(() => {});
+        await syncExpenseToFirestore(expense).catch(() => {});
         return NextResponse.json({ success: true, expense });
       }
       case 'updateExpense': {
@@ -70,38 +91,40 @@ export async function POST(req: NextRequest) {
       // 3. Drivers
       case 'createDriver': {
         const driver = fleetDb.createDriver(payload);
-        syncDriverToFirestore(driver).catch(() => {});
+        await syncDriverToFirestore(driver).catch(() => {});
         return NextResponse.json({ success: true, driver });
       }
       case 'updateDriver': {
         const driver = fleetDb.updateDriver(payload.id, payload.data);
-        syncDriverToFirestore(driver).catch(() => {});
+        await syncDriverToFirestore(driver).catch(() => {});
         return NextResponse.json({ success: true, driver });
       }
       case 'allowDriverOverride': {
         fleetDb.allowDriverOverride(payload.driverId);
+        const d = fleetDb.getDriver(payload.driverId);
+        if (d) await syncDriverToFirestore(d).catch(() => {});
         return NextResponse.json({ success: true });
       }
       case 'archiveDriver': {
         fleetDb.archiveDriver(payload.id);
-        syncDriverToFirestore({ id: payload.id, is_active: false }).catch(() => {});
+        await syncDriverToFirestore({ id: payload.id, is_active: false }).catch(() => {});
         return NextResponse.json({ success: true });
       }
 
       // 4. Vehicles
       case 'createVehicle': {
         const vehicle = fleetDb.createVehicle(payload);
-        syncVehicleToFirestore(vehicle).catch(() => {});
+        await syncVehicleToFirestore(vehicle).catch(() => {});
         return NextResponse.json({ success: true, vehicle });
       }
       case 'updateVehicle': {
         const vehicle = fleetDb.updateVehicle(payload.id, payload.data);
-        syncVehicleToFirestore(vehicle).catch(() => {});
+        await syncVehicleToFirestore(vehicle).catch(() => {});
         return NextResponse.json({ success: true, vehicle });
       }
       case 'archiveVehicle': {
         fleetDb.archiveVehicle(payload.id);
-        syncVehicleToFirestore({ id: payload.id, is_active: false }).catch(() => {});
+        await syncVehicleToFirestore({ id: payload.id, is_active: false }).catch(() => {});
         return NextResponse.json({ success: true });
       }
 

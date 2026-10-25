@@ -1248,14 +1248,15 @@ class FleetDatabase {
   // DRIVER CRUD
   // =========================================================================
 
-  public createDriver(data: { fullName: string; phone: string; pin?: string }): DriverRecord {
+  public createDriver(data: { fullName?: string; full_name?: string; phone: string; pin?: string }): DriverRecord {
     const id = `drv-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const now = new Date().toISOString();
-    const cleanPhone = data.phone.replace(/[\s-]/g, '').trim();
+    const cleanPhone = (data.phone || '').replace(/[\s-]/g, '').trim();
 
     const countRow = this.db.prepare('SELECT count(*) as c FROM drivers').get() as { c: number };
     const employeeCode = `DRV-${String((countRow?.c || 0) + 1).padStart(3, '0')}`;
     const pin = data.pin?.trim() || '1234';
+    const fullName = (data.fullName || data.full_name || 'Driver').trim();
 
     this.db.prepare(`
       INSERT INTO drivers (id, employee_code, full_name, phone, pin, license_number, is_active, allow_next_trip_override, created_at, updated_at)
@@ -1263,7 +1264,7 @@ class FleetDatabase {
     `).run(
       id,
       employeeCode,
-      data.fullName.trim(),
+      fullName,
       cleanPhone,
       pin,
       `KL-${Math.floor(10 + Math.random() * 80)}-2025-001`,
@@ -1285,13 +1286,19 @@ class FleetDatabase {
     } as any;
   }
 
-  public updateDriver(id: string, data: { fullName?: string; phone?: string; pin?: string; isActive?: boolean }): DriverRecord {
+  public updateDriver(id: string, data: { fullName?: string; full_name?: string; phone?: string; pin?: string; isActive?: boolean; is_active?: boolean }): DriverRecord {
     const current = this.db.prepare('SELECT * FROM drivers WHERE id = ?').get(id) as unknown as DriverRecord | undefined;
     if (!current) throw new Error('Driver not found');
 
     const now = new Date().toISOString();
     const cleanPhone = data.phone ? data.phone.replace(/[\s-]/g, '') : current.phone;
     const pin = data.pin?.trim() || current.pin;
+    const fullName = data.fullName?.trim() || data.full_name?.trim() || current.full_name;
+    const isActive = data.isActive !== undefined
+      ? (data.isActive ? 1 : 0)
+      : data.is_active !== undefined
+      ? (data.is_active ? 1 : 0)
+      : current.is_active;
 
     this.db.prepare(`
       UPDATE drivers
@@ -1302,10 +1309,10 @@ class FleetDatabase {
           updated_at = ?
       WHERE id = ?
     `).run(
-      data.fullName?.trim() || current.full_name,
+      fullName,
       cleanPhone,
       pin,
-      data.isActive !== undefined ? (data.isActive ? 1 : 0) : current.is_active,
+      isActive,
       now,
       id
     );
@@ -1322,6 +1329,53 @@ class FleetDatabase {
       status: d.is_active ? 'active' : 'inactive',
       is_active: Boolean(d.is_active),
     } as any;
+  }
+
+  public upsertDriverRecord(d: {
+    id: string;
+    employee_code?: string;
+    full_name?: string;
+    fullName?: string;
+    phone?: string;
+    pin?: string;
+    license_number?: string;
+    is_active?: number | boolean;
+    allow_next_trip_override?: number;
+  }): void {
+    const existing = this.db.prepare('SELECT id FROM drivers WHERE id = ?').get(d.id);
+    const now = new Date().toISOString();
+    const cleanPhone = (d.phone || '').replace(/[\s-]/g, '');
+    const isActive = d.is_active !== false && d.is_active !== 0 ? 1 : 0;
+    const override = d.allow_next_trip_override ? 1 : 0;
+    const fullName = d.full_name || d.fullName || 'Driver';
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE drivers
+        SET full_name = ?, phone = ?, pin = ?, is_active = ?, allow_next_trip_override = ?, updated_at = ?
+        WHERE id = ?
+      `).run(fullName, cleanPhone, d.pin || '1234', isActive, override, now, d.id);
+    } else {
+      this.db.prepare(`
+        INSERT INTO drivers (id, employee_code, full_name, phone, pin, license_number, is_active, allow_next_trip_override, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        d.id,
+        d.employee_code || `DRV-${d.id.slice(-3).toUpperCase()}`,
+        fullName,
+        cleanPhone,
+        d.pin || '1234',
+        d.license_number || 'KL-10-2025-001',
+        isActive,
+        override,
+        now,
+        now
+      );
+    }
+  }
+
+  public getDriver(id: string): DriverRecord | undefined {
+    return this.db.prepare('SELECT * FROM drivers WHERE id = ?').get(id) as unknown as DriverRecord | undefined;
   }
 
   public allowDriverOverride(driverId: string): boolean {
@@ -1432,6 +1486,57 @@ class FleetDatabase {
     this.db.prepare('UPDATE vehicles SET is_active = 0, updated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
     fleetEvents.emit('change', { timestamp: Date.now() });
     return true;
+  }
+
+  public getVehicle(id: string): VehicleRecord | undefined {
+    return this.db.prepare('SELECT * FROM vehicles WHERE id = ?').get(id) as unknown as VehicleRecord | undefined;
+  }
+
+  public upsertVehicleRecord(v: {
+    id: string;
+    registration_number?: string;
+    make_model?: string;
+    company_id?: string;
+    vehicle_type?: string;
+    initial_km?: number;
+    current_odometer?: number;
+    route_location?: string;
+    is_active?: boolean | number;
+    [key: string]: any;
+  }): void {
+    if (!v.id) return;
+    const existing = this.db.prepare('SELECT id FROM vehicles WHERE id = ?').get(v.id);
+    const now = new Date().toISOString();
+    const isActive = v.is_active !== false && v.is_active !== 0 ? 1 : 0;
+    const regNo = (v.registration_number || v.id).trim().toUpperCase();
+    const makeModel = (v.make_model || 'Truck').trim();
+    const companyId = v.company_id || 'comp-1';
+    const currentOdo = Number(v.current_odometer || v.initial_km || 0);
+
+    if (existing) {
+      this.db.prepare(`
+        UPDATE vehicles
+        SET registration_number = ?, make_model = ?, company_id = ?, vehicle_type = ?, current_odometer = ?, route_location = ?, is_active = ?, updated_at = ?
+        WHERE id = ?
+      `).run(regNo, makeModel, companyId, v.vehicle_type || 'truck', currentOdo, v.route_location || null, isActive, now, v.id);
+    } else {
+      this.db.prepare(`
+        INSERT INTO vehicles (id, registration_number, make_model, company_id, vehicle_type, initial_km, current_odometer, route_location, is_active, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        v.id,
+        regNo,
+        makeModel,
+        companyId,
+        v.vehicle_type || 'truck',
+        Number(v.initial_km || 0),
+        currentOdo,
+        v.route_location || null,
+        isActive,
+        now,
+        now
+      );
+    }
   }
 
   // =========================================================================
