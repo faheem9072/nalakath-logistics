@@ -47,14 +47,29 @@ export function SettingsView() {
     return unsub;
   }, []);
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
+  const [overrideLoadingId, setOverrideLoadingId] = useState<string | null>(null);
+
+  const handleAllowSecondTrip = async (driverId: string, driverName: string) => {
+    setOverrideLoadingId(driverId);
+    try {
+      await dataRepo.allowDriverNextTripOverride(driverId);
+      setSaveSuccess(`2nd Trip enabled for ${driverName}! They can start another trip immediately.`);
+      setTimeout(() => setSaveSuccess(null), 4000);
+      await loadData();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to enable 2nd trip');
+    } finally {
+      setOverrideLoadingId(null);
+    }
+  };
+
+  const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setSaveSuccess(null);
     try {
-      await dataRepo.updateSettings('min_trip_interval_hours', minHours.trim());
       await dataRepo.updateSettings('owner_password', ownerPassword.trim());
-      setSaveSuccess('Settings saved successfully!');
+      setSaveSuccess('Owner password updated successfully!');
       setTimeout(() => setSaveSuccess(null), 3000);
       await loadData();
     } catch (err) {
@@ -100,7 +115,7 @@ export function SettingsView() {
           Fleet Settings
         </h1>
         <p className="text-xs text-gray-400 leading-relaxed">
-          Configure operational rest intervals, owner access credentials, and driver trip overrides.
+          Manage driver 2nd trip permissions, owner access credentials, and cloud synchronization.
         </p>
       </div>
 
@@ -111,34 +126,72 @@ export function SettingsView() {
         </div>
       )}
 
-      {/* Settings Form */}
-      <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-2xs space-y-5">
-        <form onSubmit={handleSaveSettings} className="space-y-5">
-          {/* Minimum Wait Time (N Hours) */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-              Minimum Driver Rest Interval (Hours)
-            </label>
-            <p className="text-xs text-gray-500">
-              Mandatory rest period after ending a trip before the driver is allowed to start their next trip (default: 6 hours).
-            </p>
-            <div className="relative mt-2">
-              <Clock className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                max="24"
-                value={minHours}
-                onChange={(e) => setMinHours(e.target.value)}
-                className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-bold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white"
-                required
-              />
-            </div>
+      {/* 2nd Trip Authorization for Drivers (Replaces Minimum Rest Input) */}
+      <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-2xs space-y-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
+            <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
+              Allow 2nd Trip For Drivers
+            </h2>
           </div>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            By default, when a driver ends a trip, the system enforces a rest interval before their next trip. If a driver needs to run a 2nd trip immediately, click &apos;Allow 2nd Trip&apos; below:
+          </p>
+        </div>
 
-          {/* Owner Password */}
-          <div className="space-y-1.5 pt-2 border-t border-gray-100">
+        <div className="divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden">
+          {drivers.length === 0 ? (
+            <p className="p-4 text-xs text-gray-400 text-center">No drivers registered</p>
+          ) : (
+            drivers.map((d) => {
+              const hasOverride = (d as unknown as { allow_next_trip_override?: number }).allow_next_trip_override === 1;
+              const isOnTrip = d.status === 'on_trip' || (d as unknown as { active_trip?: unknown }).active_trip != null;
+              const isInCooldown = (d as unknown as { is_in_cooldown?: boolean }).is_in_cooldown;
+
+              return (
+                <div
+                  key={d.id}
+                  className="p-3.5 flex items-center justify-between gap-3 bg-white hover:bg-gray-50 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-[#121316] truncate">
+                      {d.full_name}
+                    </p>
+                    <p className="text-xs text-gray-400 font-mono mt-0.5">
+                      {d.phone} • {isOnTrip ? 'Currently on trip' : isInCooldown ? 'Resting after trip' : 'Idle / Ready'}
+                    </p>
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-2">
+                    {hasOverride ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>2nd Trip Allowed</span>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={overrideLoadingId === d.id}
+                        onClick={() => handleAllowSecondTrip(d.id, d.full_name)}
+                        className="px-3.5 py-2 rounded-xl bg-[#121316] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-[#D4F65B] fill-[#D4F65B]" />
+                        <span>{overrideLoadingId === d.id ? 'Enabling...' : 'Allow 2nd Trip'}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Owner Password Card */}
+      <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-2xs space-y-4">
+        <form onSubmit={handleSavePassword} className="space-y-4">
+          <div className="space-y-1.5">
             <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
               Owner Access Password
             </label>
@@ -171,7 +224,7 @@ export function SettingsView() {
             className="w-full h-12 bg-[#121316] hover:bg-black text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
           >
             <Save className="w-4 h-4 text-[#D4F65B]" />
-            <span>{isSaving ? 'Saving Preferences...' : 'Save Settings'}</span>
+            <span>{isSaving ? 'Updating Password...' : 'Save New Password'}</span>
           </button>
         </form>
       </div>

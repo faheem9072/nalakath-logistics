@@ -178,6 +178,17 @@ export function DriversListView() {
     }
   };
 
+  const handleAllowSecondTrip = async (driverId: string, driverName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await dataRepo.allowDriverNextTripOverride(driverId);
+      showSavedNotice(`2nd Trip enabled for ${driverName}! They can start their next trip immediately.`);
+      await loadData();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to enable 2nd trip');
+    }
+  };
+
   // If a driver is selected, render their Detail View!
   if (selectedDriverId) {
     return (
@@ -274,12 +285,27 @@ export function DriversListView() {
                       <h3 className="font-extrabold text-[#121316] text-sm sm:text-base tracking-tight truncate">
                         {d.full_name}
                       </h3>
-                      {/* Status Chip (On trip / Idle) */}
+                      {/* Status Chip (On trip / 2nd Trip Allowed / Resting / Idle) */}
                       {isOnTrip ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D4F65B] text-black shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
                           <span>On trip</span>
                         </span>
+                      ) : (d as unknown as { allow_next_trip_override?: number }).allow_next_trip_override === 1 ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                          <span>2nd Trip Allowed</span>
+                        </span>
+                      ) : (d as unknown as { is_in_cooldown?: boolean }).is_in_cooldown ? (
+                        <button
+                          type="button"
+                          onClick={(e) => handleAllowSecondTrip(d.id, d.full_name, e)}
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 hover:bg-amber-600 text-white active:scale-95 transition-all shrink-0 cursor-pointer shadow-2xs"
+                          title="Click to allow immediate 2nd trip without waiting"
+                        >
+                          <Zap className="w-3 h-3 fill-white" />
+                          <span>Allow 2nd Trip</span>
+                        </button>
                       ) : (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 shrink-0">
                           Idle
