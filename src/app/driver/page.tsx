@@ -50,7 +50,7 @@ function DriverDashboardContent() {
   // Vehicle selection state (when no trip is active)
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [companyFilter, setCompanyFilter] = useState<'all' | 'Delhivery' | 'Shadowfax'>('all');
-  const [startOdoDisplay, setStartOdoDisplay] = useState<number>(0);
+  const [startOdoInput, setStartOdoInput] = useState<string>('0');
   const [destinationInput, setDestinationInput] = useState('');
   const [isStartingTrip, setIsStartingTrip] = useState(false);
   const [startTripError, setStartTripError] = useState<string | null>(null);
@@ -172,10 +172,10 @@ function DriverDashboardContent() {
       return;
     }
 
-    // Auto-fill starting KM from vehicle's last ending KM (locked/read-only)
+    // Auto-fill starting KM from vehicle's last ending KM (editable by driver)
     const autoStartingKm = dataRepo.getStartingKmForVehicle(v.id);
     setSelectedVehicle(v);
-    setStartOdoDisplay(autoStartingKm);
+    setStartOdoInput(String(autoStartingKm ?? v.current_odometer ?? 0));
     setDestinationInput(v.route_location || 'Ad-hoc Route');
     setStartTripError(null);
   };
@@ -192,6 +192,12 @@ function DriverDashboardContent() {
       return;
     }
 
+    const parsedStartOdo = parseFloat(startOdoInput);
+    if (isNaN(parsedStartOdo) || parsedStartOdo < 0) {
+      setStartTripError('Please enter a valid starting kilometer (KM)');
+      return;
+    }
+
     setIsStartingTrip(true);
     setStartTripError(null);
     try {
@@ -201,7 +207,7 @@ function DriverDashboardContent() {
       const trip = await dataRepo.startTripForDriver({
         driverPhoneOrId: driver.id,
         vehicleId: selectedVehicle.id,
-        startOdometer: startOdoDisplay,
+        startOdometer: parsedStartOdo,
         destination: destinationInput.trim() || undefined,
         startLocation,
       });
@@ -640,22 +646,33 @@ function DriverDashboardContent() {
                     )}
 
                     <form onSubmit={handleStartTrip} className="space-y-4">
-                      {/* Readonly locked starting KM */}
+                      {/* Editable starting KM */}
                       <div className="space-y-1.5">
                         <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider flex items-center justify-between">
-                          <span>Starting KM (Locked)</span>
-                          <span className="flex items-center gap-1 text-[11px] text-gray-400 font-normal">
-                            <Lock className="w-3 h-3 text-gray-400" />
-                            <span>Auto-filled</span>
+                          <span>Starting Kilometer (KM)</span>
+                          <span className="flex items-center gap-1 text-[11px] text-gray-500 font-medium">
+                            <span>Type dashboard meter KM</span>
                           </span>
                         </label>
                         <div className="relative">
                           <Gauge className="w-5 h-5 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                          <div className="w-full h-14 pl-12 pr-4 bg-[#F2F4F7] border border-gray-200/90 rounded-2xl flex items-center justify-between text-xl font-mono font-black text-[#121316] select-none">
-                            <span>{startOdoDisplay.toLocaleString()}</span>
-                            <span className="text-xs font-sans font-bold text-gray-500">KM</span>
-                          </div>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            required
+                            value={startOdoInput}
+                            onChange={(e) => setStartOdoInput(e.target.value)}
+                            placeholder="e.g. 15420"
+                            className="w-full h-14 pl-12 pr-12 bg-[#F8F9FA] focus:bg-white border-2 border-gray-200 focus:border-black rounded-2xl text-xl font-mono font-black text-[#121316] focus:outline-none focus:ring-2 focus:ring-gray-100 transition-all"
+                          />
+                          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-sans font-bold text-gray-500 pointer-events-none">
+                            KM
+                          </span>
                         </div>
+                        <p className="text-[11px] text-gray-400">
+                          Pre-filled from previous trip. You can type and adjust this to match the vehicle meter.
+                        </p>
                       </div>
 
                       <div className="space-y-1.5">

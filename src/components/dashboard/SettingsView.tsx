@@ -17,11 +17,14 @@ import {
   Save,
   Users,
   Cloud,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 export function SettingsView() {
   const [minHours, setMinHours] = useState('6');
   const [ownerPassword, setOwnerPassword] = useState('kore2026');
+  const [showPassword, setShowPassword] = useState(false);
   const [drivers, setDrivers] = useState<FleetState['drivers']>([]);
   const [lastUpdated, setLastUpdated] = useState('');
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -145,12 +148,20 @@ export function SettingsView() {
             <div className="relative mt-2">
               <Lock className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
               <input
-                type="text"
+                type={showPassword ? 'text' : 'password'}
                 value={ownerPassword}
                 onChange={(e) => setOwnerPassword(e.target.value)}
-                className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-bold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white"
+                className="w-full h-12 pl-11 pr-12 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-bold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
           </div>
 
