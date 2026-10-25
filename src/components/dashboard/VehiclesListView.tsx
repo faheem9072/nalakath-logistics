@@ -35,6 +35,7 @@ export function VehiclesListView() {
   const [vehicles, setVehicles] = useState<VehicleWithStatus[]>([]);
   const [search, setSearch] = useState('');
   const [companyFilter, setCompanyFilter] = useState<'all' | 'Delhivery' | 'Shadowfax'>('all');
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedVehicleReg, setSelectedVehicleReg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -323,11 +324,15 @@ export function VehiclesListView() {
   };
 
   // If vehicle is tapped, render the VehicleDetailView
-  if (selectedVehicleReg) {
+  if (selectedVehicleId || selectedVehicleReg) {
     return (
       <VehicleDetailView
-        vehicleQuery={selectedVehicleReg}
-        onBack={() => setSelectedVehicleReg(null)}
+        vehicleId={selectedVehicleId || undefined}
+        vehicleQuery={selectedVehicleReg || undefined}
+        onBack={() => {
+          setSelectedVehicleId(null);
+          setSelectedVehicleReg(null);
+        }}
         onVehicleUpdated={loadVehiclesFallback}
       />
     );
@@ -410,7 +415,10 @@ export function VehiclesListView() {
             return (
               <div
                 key={v.id}
-                onClick={() => setSelectedVehicleReg(v.registration_number)}
+                onClick={() => {
+                  setSelectedVehicleId(v.id);
+                  setSelectedVehicleReg(v.registration_number);
+                }}
                 className="bg-white rounded-[26px] p-4 sm:p-5 border border-gray-100 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-3 group active:scale-[0.99]"
               >
                 {/* Left: Icon & Vehicle Info */}

@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, driver });
       }
       case 'allowDriverOverride': {
-        fleetDb.allowDriverOverride(payload.driverId);
+        fleetDb.allowDriverOverride(payload.driverId, payload.enabled !== false);
         const d = fleetDb.getDriver(payload.driverId);
         if (d) {
           try {

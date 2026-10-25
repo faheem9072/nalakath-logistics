@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { dataRepo, DriverMonthlySummary } from '@/lib/data-service';
 import { db, isFirebaseConfigured } from '@/lib/firebase/config';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { Driver, Vehicle } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
 import {
@@ -21,6 +21,8 @@ import {
   KeyRound,
   ShieldCheck,
   FileSpreadsheet,
+  Zap,
+  Clock,
 } from 'lucide-react';
 import { triggerExcelDownload } from '@/lib/utils/download-excel';
 
@@ -78,6 +80,7 @@ export function DriverDetailView({
   const [addTripNotes, setAddTripNotes] = useState('');
   const [addTripError, setAddTripError] = useState<string | null>(null);
   const [isSubmittingAddTrip, setIsSubmittingAddTrip] = useState(false);
+  const [isTogglingSecondTrip, setIsTogglingSecondTrip] = useState(false);
 
   const showSavedNotice = (msg: string) => {
     setSavedMessage(msg);
@@ -96,10 +99,12 @@ export function DriverDetailView({
       const current = drivers.find((d) => d.id === driverId);
       if (current) {
         setDriver(current);
-        setEditName(current.full_name);
-        setEditPhone(current.phone);
-        setEditPin(current.pin || '1234');
-        setEditIsActive(current.is_active !== false);
+        if (!isEditDriverOpen) {
+          setEditName(current.full_name);
+          setEditPhone(current.phone);
+          setEditPin(current.pin || '1234');
+          setEditIsActive(current.is_active !== false);
+        }
       }
 
       const res = await dataRepo.getDriverMonthlySummary(
@@ -117,12 +122,78 @@ export function DriverDetailView({
   useEffect(() => {
     loadDriverData();
     const unsub = dataRepo.subscribe(loadDriverData);
-    const interval = setInterval(loadDriverData, 3000);
+    const interval = setInterval(loadDriverData, 4000);
+
+    let unsubFirestore: (() => void) | undefined;
+    if (isFirebaseConfigured && db) {
+      try {
+        unsubFirestore = onSnapshot(doc(db, 'drivers', driverId), (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            setDriver((prev) => {
+              if (!prev) return null;
+              return {
+                ...prev,
+                full_name: data.full_name ?? prev.full_name,
+                phone: data.phone ?? prev.phone,
+                pin: data.pin ?? prev.pin,
+                is_active: data.is_active ?? prev.is_active,
+                status: data.status ?? prev.status,
+                allow_next_trip_override: data.allow_next_trip_override ?? prev.allow_next_trip_override,
+              };
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('Firestore driver listener failed:', err);
+      }
+    }
+
     return () => {
       unsub();
       clearInterval(interval);
+      if (unsubFirestore) unsubFirestore();
     };
-  }, [driverId, selectedMonth]);
+  }, [driverId, selectedMonth, isEditDriverOpen]);
+
+  const handleToggleSecondTrip = async () => {
+    if (!driver) return;
+    setIsTogglingSecondTrip(true);
+    const newOverride = driver.allow_next_trip_override === 1 ? 0 : 1;
+    const nowIso = new Date().toISOString();
+
+    try {
+      if (isFirebaseConfigured && db) {
+        const driverRef = doc(db, 'drivers', driver.id);
+        await setDoc(
+          driverRef,
+          {
+            id: driver.id,
+            allow_next_trip_override: newOverride,
+            updated_at: nowIso,
+          },
+          { merge: true }
+        );
+      }
+
+      await dataRepo
+        .allowDriverNextTripOverride(driver.id, newOverride === 1)
+        .catch((err) => console.warn('dataRepo.allowDriverNextTripOverride sync:', err));
+
+      setDriver((prev) => (prev ? { ...prev, allow_next_trip_override: newOverride } : null));
+      showSavedNotice(
+        newOverride === 1
+          ? '2nd Trip permission granted! Driver can now start next trip immediately.'
+          : '2nd Trip permission revoked. Standard rest policy restored.'
+      );
+      if (onDriverUpdated) onDriverUpdated();
+    } catch (err: unknown) {
+      console.error('Failed to toggle second trip permission:', err);
+      alert(err instanceof Error ? err.message : 'Failed to update 2nd trip permission');
+    } finally {
+      setIsTogglingSecondTrip(false);
+    }
+  };
 
   const handleOpenEditDriver = () => {
     if (driver) {
@@ -463,6 +534,74 @@ export function DriverDetailView({
               </button>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* 2nd Trip Permission (Owner Authorization Card) */}
+      <div className="bg-gradient-to-br from-[#121316] to-[#1A1C20] rounded-[28px] p-5 border border-[#27282F] shadow-lg text-white space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-[#D4F65B]/15 border border-[#D4F65B]/30 flex items-center justify-center shrink-0">
+              <Zap className="w-4 h-4 text-[#D4F65B] fill-[#D4F65B]" />
+            </div>
+            <div>
+              <h2 className="text-sm font-black tracking-tight text-white">
+                2nd Trip Authorization
+              </h2>
+              <p className="text-[11px] text-gray-400">
+                Continuous trip permission & cooldown override
+              </p>
+            </div>
+          </div>
+
+          <div>
+            {driver.allow_next_trip_override === 1 ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold bg-[#D4F65B] text-black shadow-xs">
+                <CheckCircle2 className="w-3.5 h-3.5 text-black" />
+                <span>2nd Trip Allowed</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium bg-[#22242A] text-gray-400 border border-gray-700">
+                <Clock className="w-3.5 h-3.5 text-gray-400" />
+                <span>Rest Cooldown Active</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-[#18191E] rounded-2xl p-3.5 border border-[#25272F] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-xs text-gray-300 space-y-1">
+            <p className="font-semibold text-white">
+              {driver.allow_next_trip_override === 1
+                ? 'Permission is ACTIVE: Driver can start a second trip immediately.'
+                : 'Standard 6-hour safety cooldown is currently enforced for this driver.'}
+            </p>
+            <p className="text-[11px] text-gray-400">
+              {driver.allow_next_trip_override === 1
+                ? 'The driver will not be blocked by the rest timer on their driver app.'
+                : 'Turn ON authorization if this driver needs to take an emergency or back-to-back delivery.'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleToggleSecondTrip}
+            disabled={isTogglingSecondTrip}
+            className={`cursor-pointer px-4 py-2.5 rounded-xl font-black text-xs transition-all active:scale-95 shrink-0 flex items-center justify-center gap-2 ${
+              driver.allow_next_trip_override === 1
+                ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40'
+                : 'bg-[#D4F65B] hover:bg-[#c4e64d] text-black shadow-sm'
+            }`}
+          >
+            <Zap className={`w-3.5 h-3.5 ${driver.allow_next_trip_override === 1 ? 'text-rose-300' : 'fill-black'}`} />
+            <span>
+              {isTogglingSecondTrip
+                ? 'Updating...'
+                : driver.allow_next_trip_override === 1
+                ? 'Revoke Authorization'
+                : 'Authorize 2nd Trip Now'}
+            </span>
+          </button>
         </div>
       </div>
 

@@ -1378,8 +1378,9 @@ class FleetDatabase {
     return this.db.prepare('SELECT * FROM drivers WHERE id = ?').get(id) as unknown as DriverRecord | undefined;
   }
 
-  public allowDriverOverride(driverId: string): boolean {
-    this.db.prepare('UPDATE drivers SET allow_next_trip_override = 1, updated_at = ? WHERE id = ?').run(
+  public allowDriverOverride(driverId: string, enabled: boolean = true): boolean {
+    this.db.prepare('UPDATE drivers SET allow_next_trip_override = ?, updated_at = ? WHERE id = ?').run(
+      enabled ? 1 : 0,
       new Date().toISOString(),
       driverId
     );
@@ -1387,8 +1388,8 @@ class FleetDatabase {
     return true;
   }
 
-  public allowDriverNextTripOverride(driverId: string): boolean {
-    return this.allowDriverOverride(driverId);
+  public allowDriverNextTripOverride(driverId: string, enabled: boolean = true): boolean {
+    return this.allowDriverOverride(driverId, enabled);
   }
 
   public archiveDriver(id: string): boolean {

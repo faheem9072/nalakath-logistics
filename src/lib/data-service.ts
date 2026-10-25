@@ -310,7 +310,7 @@ class ServerFleetRepository {
             result = { success: true };
             break;
           case 'allowDriverOverride':
-            db.allowDriverNextTripOverride(payload.driverId);
+            db.allowDriverNextTripOverride(payload.driverId, payload.enabled !== false);
             result = { success: true };
             break;
           default:
@@ -1426,8 +1426,28 @@ class ServerFleetRepository {
       phone?: string;
       pin?: string;
       is_active?: boolean;
+      allow_next_trip_override?: number;
     }
   ): Promise<Driver> {
+    if (this.state?.drivers) {
+      this.state.drivers = this.state.drivers.map((d) =>
+        d.id === id
+          ? {
+              ...d,
+              full_name: data.full_name ?? d.full_name,
+              phone: data.phone ?? d.phone,
+              pin: data.pin ?? d.pin,
+              is_active: data.is_active !== undefined ? data.is_active : d.is_active,
+              allow_next_trip_override:
+                data.allow_next_trip_override !== undefined
+                  ? data.allow_next_trip_override
+                  : (d as unknown as { allow_next_trip_override?: number }).allow_next_trip_override,
+            }
+          : d
+      );
+      this.notify();
+    }
+
     const res = await this.dispatchAction<{ driver: Driver }>('updateDriver', {
       id,
       data: {
@@ -1440,8 +1460,20 @@ class ServerFleetRepository {
     return res.driver;
   }
 
-  public async allowDriverNextTripOverride(driverId: string): Promise<void> {
-    await this.dispatchAction('allowDriverOverride', { driverId });
+  public async allowDriverNextTripOverride(driverId: string, enabled: boolean = true): Promise<void> {
+    const overrideVal = enabled ? 1 : 0;
+    if (this.state?.drivers) {
+      this.state.drivers = this.state.drivers.map((d) =>
+        d.id === driverId
+          ? {
+              ...d,
+              allow_next_trip_override: overrideVal,
+            }
+          : d
+      );
+      this.notify();
+    }
+    await this.dispatchAction('allowDriverOverride', { driverId, enabled });
   }
 
   public async archiveDriver(id: string): Promise<boolean> {
@@ -1501,6 +1533,29 @@ class ServerFleetRepository {
       if (matched) compId = matched.id;
     }
 
+    // Immediately update in-memory state so getVehicleDetail and UI views see updated name/model immediately
+    if (this.state?.vehicles) {
+      this.state.vehicles = this.state.vehicles.map((v) => {
+        if (v.id === id) {
+          return {
+            ...v,
+            registration_number: data.registration_number ?? v.registration_number,
+            make_model: data.make_model ?? v.make_model,
+            company: data.company ?? v.company,
+            company_id: compId ?? v.company_id,
+            vehicle_type: (data.vehicle_type as any) ?? v.vehicle_type,
+            initial_km: data.initial_km ?? v.initial_km,
+            current_odometer: data.current_odometer ?? v.current_odometer,
+            route_location: data.route_location !== undefined ? data.route_location : v.route_location,
+            is_active: data.is_active !== undefined ? data.is_active : v.is_active,
+            status: data.is_active !== undefined ? (data.is_active ? 'active' : 'inactive') : v.status,
+          };
+        }
+        return v;
+      });
+      this.notify();
+    }
+
     const res = await this.dispatchAction<{ vehicle: Vehicle }>('updateVehicle', {
       id,
       data: {
@@ -1535,6 +1590,21 @@ class ServerFleetRepository {
     id: string,
     data: { name?: string; contact_person?: string; contact_phone?: string; is_active?: boolean }
   ): Promise<Company> {
+    if (this.state?.companies) {
+      this.state.companies = this.state.companies.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              name: data.name ?? c.name,
+              contact_person: data.contact_person ?? c.contact_person,
+              contact_phone: data.contact_phone ?? c.contact_phone,
+              is_active: data.is_active !== undefined ? data.is_active : c.is_active,
+            }
+          : c
+      );
+      this.notify();
+    }
+
     const res = await this.dispatchAction<{ company: Company }>('updateCompany', {
       id,
       data: {
@@ -1645,8 +1715,8 @@ class ServerFleetRepository {
     );
   }
 
-  public async allowDriverOverride(driverId: string): Promise<void> {
-    return this.allowDriverNextTripOverride(driverId);
+  public async allowDriverOverride(driverId: string, enabled: boolean = true): Promise<void> {
+    return this.allowDriverNextTripOverride(driverId, enabled);
   }
 
   public async setVehicleMonthlyIncome(vehicleId: string, month: string, amount: number): Promise<void> {

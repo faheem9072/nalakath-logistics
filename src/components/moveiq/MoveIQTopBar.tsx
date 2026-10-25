@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
 import { Profile } from '@/types/database';
 import { Bell, LogOut, Check, Smartphone, Shield, RefreshCw } from 'lucide-react';
-import { InstallPwaButton } from '@/components/layout/InstallPwaButton';
 
 interface MoveIQTopBarProps {
   title?: string;
@@ -103,9 +102,8 @@ export function MoveIQTopBar({
           </div>
         </div>
 
-        {/* Right: Install App Button & User Profile Avatar */}
+        {/* Right: User Profile Avatar */}
         <div className="flex items-center gap-2">
-          <InstallPwaButton className="hidden sm:inline-flex !bg-[#121316] hover:!bg-black !text-white !font-bold !text-xs !py-2 !px-3.5 !rounded-2xl shadow-xs" />
           <div className="relative">
             <button
               type="button"
@@ -186,10 +184,6 @@ export function MoveIQTopBar({
                     </div>
                     {profile?.role === 'driver' && <Check className="w-4 h-4 text-[#D4F65B]" />}
                   </button>
-                </div>
-
-                <div className="py-2 border-b border-gray-100 sm:hidden">
-                  <InstallPwaButton className="w-full justify-center !bg-[#121316] hover:!bg-black !text-white !font-bold !py-2.5 !rounded-2xl" />
                 </div>
 
                 <div className="pt-2">

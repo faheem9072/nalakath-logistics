@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { dataRepo } from '@/lib/data-service';
 import { db, isFirebaseConfigured } from '@/lib/firebase/config';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { VehicleDetailReport, ExpenseWithDetails, VehicleTravelHistoryTrip } from '@/types/models';
 import { Vehicle, ExpenseType, ClientCompany, VehicleType, Driver, TripLocation } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
@@ -34,6 +34,7 @@ import {
 import { triggerExcelDownload } from '@/lib/utils/download-excel';
 
 interface VehicleDetailViewProps {
+  vehicleId?: string;
   vehicleQuery?: string;
   initialVehicleQuery?: string;
   initialMonth?: string;
@@ -43,6 +44,7 @@ interface VehicleDetailViewProps {
 }
 
 export function VehicleDetailView({
+  vehicleId,
   vehicleQuery,
   initialVehicleQuery,
   initialMonth,
@@ -50,7 +52,7 @@ export function VehicleDetailView({
   showBackBtn = true,
   onVehicleUpdated,
 }: VehicleDetailViewProps) {
-  const effectiveQuery = vehicleQuery || initialVehicleQuery || '3057';
+  const effectiveQuery = vehicleId || vehicleQuery || initialVehicleQuery || 'veh-del-3057';
   const [report, setReport] = useState<VehicleDetailReport | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth || '2026-10');
   const [drivers, setDrivers] = useState<Driver[]>([]);
@@ -152,16 +154,19 @@ export function VehicleDetailView({
       setCompanies(compList);
 
       if (data) {
-        setEditRegNo(data.vehicle.registration_number);
-        setEditModel(data.vehicle.make_model);
-        setEditCompanyId(data.vehicle.company_id || compList[0]?.id || '');
-        setEditCompany((data.vehicle.company as ClientCompany) || 'Delhivery');
-        setEditRouteLocation(data.vehicle.route_location || '');
-        setEditType(data.vehicle.vehicle_type);
-        setEditInitialKm(String(data.vehicle.initial_km ?? data.vehicle.current_odometer));
-        setEditOdo(String(data.vehicle.current_odometer));
-        setEditIsActive(data.vehicle.is_active !== false && data.vehicle.status !== 'inactive');
-        setIncomeAmountInput(String(data.monthlyIncome || 50000));
+        setReport(data);
+        if (!isEditVehicleOpen) {
+          setEditRegNo(data.vehicle.registration_number);
+          setEditModel(data.vehicle.make_model);
+          setEditCompanyId(data.vehicle.company_id || compList[0]?.id || '');
+          setEditCompany((data.vehicle.company as ClientCompany) || 'Delhivery');
+          setEditRouteLocation(data.vehicle.route_location || '');
+          setEditType(data.vehicle.vehicle_type);
+          setEditInitialKm(String(data.vehicle.initial_km ?? data.vehicle.current_odometer));
+          setEditOdo(String(data.vehicle.current_odometer));
+          setEditIsActive(data.vehicle.is_active !== false && data.vehicle.status !== 'inactive');
+          setIncomeAmountInput(String(data.monthlyIncome || 50000));
+        }
       }
     } catch (err) {
       console.error('Failed to load vehicle detail:', err);
@@ -172,13 +177,47 @@ export function VehicleDetailView({
 
   useEffect(() => {
     loadData();
-    const unsub = dataRepo.subscribe(loadData);
-    const interval = setInterval(loadData, 3000);
+    const unsubRepo = dataRepo.subscribe(loadData);
+    const interval = setInterval(loadData, 4000);
+
+    let unsubFsDoc: (() => void) | null = null;
+    const targetDocId = vehicleId || (report?.vehicle?.id);
+    if (isFirebaseConfigured && db && targetDocId) {
+      try {
+        unsubFsDoc = onSnapshot(doc(db, 'vehicles', targetDocId), (snap) => {
+          if (snap.exists()) {
+            const fsData = snap.data();
+            setReport((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                vehicle: {
+                  ...prev.vehicle,
+                  registration_number: fsData.registration_number || prev.vehicle.registration_number,
+                  make_model: fsData.make_model || prev.vehicle.make_model,
+                  company: fsData.company || fsData.company_name || prev.vehicle.company,
+                  route_location: fsData.route_location !== undefined ? fsData.route_location : prev.vehicle.route_location,
+                  vehicle_type: fsData.vehicle_type || prev.vehicle.vehicle_type,
+                  initial_km: typeof fsData.initial_km === 'number' ? fsData.initial_km : prev.vehicle.initial_km,
+                  current_odometer: typeof fsData.current_odometer === 'number' ? fsData.current_odometer : prev.vehicle.current_odometer,
+                  is_active: fsData.is_active !== false && fsData.status !== 'inactive',
+                  status: (fsData.status as any) || prev.vehicle.status,
+                },
+              };
+            });
+          }
+        });
+      } catch (err) {
+        console.warn('Firestore vehicle doc onSnapshot skipped:', err);
+      }
+    }
+
     return () => {
-      unsub();
+      unsubRepo();
       clearInterval(interval);
+      if (unsubFsDoc) unsubFsDoc();
     };
-  }, [effectiveQuery, selectedMonth]);
+  }, [effectiveQuery, selectedMonth, vehicleId, report?.vehicle?.id]);
 
   const handleOpenEditVehicle = () => {
     if (report) {
@@ -214,6 +253,27 @@ export function VehicleDetailView({
       const selectedComp = companies.find((c) => c.id === editCompanyId);
       const compName = selectedComp?.name || editCompany;
 
+      // Instantly update local state so there is zero delay or reversion
+      setReport((prev) =>
+        prev
+          ? {
+              ...prev,
+              vehicle: {
+                ...prev.vehicle,
+                registration_number: cleanReg,
+                make_model: cleanModel,
+                company: compName,
+                route_location: cleanLocation,
+                vehicle_type: editType,
+                initial_km: initialKmVal,
+                current_odometer: currentOdoVal,
+                is_active: editIsActive,
+                status: editIsActive ? 'active' : 'inactive',
+              },
+            }
+          : prev
+      );
+
       if (isFirebaseConfigured && db) {
         const vehicleRef = doc(db, 'vehicles', targetId);
         await setDoc(vehicleRef, {
@@ -247,7 +307,6 @@ export function VehicleDetailView({
 
       setIsEditVehicleOpen(false);
       showSavedNotice('Vehicle details saved successfully!');
-      await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
     } catch (err: unknown) {
       console.error('Failed to save vehicle to Firestore:', err);
