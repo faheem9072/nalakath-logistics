@@ -20,9 +20,9 @@ export default function DashboardLayout({
         <main className="flex-1 px-4 py-3 overflow-y-auto no-scrollbar pb-2">
           {children}
 
-          {/* Subtle Kore Footer */}
+          {/* Subtle Nalakath Footer */}
           <footer className="text-center py-4 text-[11px] font-medium text-gray-400">
-            Designed and developed by Kore
+            Nalakath Logistics • Developed by Kore
           </footer>
         </main>
 

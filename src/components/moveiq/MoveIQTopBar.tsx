@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
 import { Profile } from '@/types/database';
-import { Bell, LogOut, Check, Smartphone, UserCheck, Shield } from 'lucide-react';
+import { Bell, LogOut, Check, Smartphone, Shield, RefreshCw } from 'lucide-react';
 
 interface MoveIQTopBarProps {
   title?: string;
@@ -20,26 +20,31 @@ export function MoveIQTopBar({
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(1);
   const [showNotificationToast, setShowNotificationToast] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<string>('');
+
+  const loadProfile = () => {
+    dataRepo.getCurrentProfile().then(setProfile);
+    setLastUpdated(dataRepo.getLastUpdated());
+  };
 
   useEffect(() => {
-    dataRepo.getCurrentProfile().then(setProfile);
+    loadProfile();
+    const unsub = dataRepo.subscribe(() => {
+      loadProfile();
+    });
+    return unsub;
   }, []);
 
   const handleRoleSwitch = async (role: 'owner' | 'driver') => {
-    const targetMap: Record<string, string> = {
-      owner: '00000000-0000-0000-0000-000000000001',
-      driver: '00000000-0000-0000-0000-000000000003',
-    };
-    await dataRepo.setSessionUser(targetMap[role]);
+    await dataRepo.setSessionUser(role);
     const updated = await dataRepo.getCurrentProfile();
     setProfile(updated);
     setIsMenuOpen(false);
     if (role === 'driver') {
       router.push('/driver');
     } else {
-      router.push('/dashboard');
+      router.push('/drivers');
     }
   };
 
@@ -73,25 +78,26 @@ export function MoveIQTopBar({
           )}
         </button>
 
-        {/* Center: Brand Mark (MoveIQ style: official circular Nalakath logo + name) */}
+        {/* Center: Nalakath Logistics Logo & Name */}
         <div
           onClick={() => {
             if (profile?.role === 'driver') router.push('/driver');
-            else router.push('/dashboard');
+            else router.push('/drivers');
           }}
-          className="flex items-center gap-2 cursor-pointer select-none"
+          className="flex items-center gap-2 cursor-pointer select-none px-2 active:scale-98 transition-transform"
+          title="Nalakath Logistics"
         >
           <img
             src="/nalakath-logo.png"
             alt="Nalakath Logistics"
-            className="w-8 h-8 rounded-full object-cover shadow-2xs border border-gray-200"
+            className="w-8 h-8 sm:w-9 sm:h-9 rounded-full object-contain shrink-0 shadow-2xs border border-gray-200/80"
           />
-          <div className="flex flex-col">
-            <span className="font-extrabold text-base tracking-tight text-[#121316] leading-none">
-              Nalakath
+          <div className="flex flex-col text-left leading-none">
+            <span className="font-black text-xs sm:text-sm tracking-tight text-[#121316]">
+              NALAKATH
             </span>
-            <span className="text-[10px] text-gray-400 font-semibold tracking-wider uppercase leading-none mt-0.5">
-              Logistics
+            <span className="text-[8px] sm:text-[9px] font-extrabold uppercase tracking-widest text-gray-500 mt-0.5">
+              LOGISTICS
             </span>
           </div>
         </div>
@@ -104,9 +110,8 @@ export function MoveIQTopBar({
             className="w-11 h-11 rounded-full overflow-hidden border-2 border-white shadow-xs ring-1 ring-gray-200/90 active:scale-95 transition-transform flex items-center justify-center bg-gray-100 cursor-pointer"
             aria-label="User profile"
           >
-            {/* Crisp professional avatar */}
-            <div className="w-full h-full bg-gradient-to-tr from-stone-800 to-stone-600 text-white flex items-center justify-center font-bold text-sm tracking-wide">
-              {profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : 'N'}
+            <div className="w-full h-full bg-[#121316] text-white flex items-center justify-center font-bold text-sm tracking-wide">
+              {profile?.full_name ? profile.full_name.charAt(0).toUpperCase() : 'K'}
             </div>
           </button>
 
@@ -129,9 +134,16 @@ export function MoveIQTopBar({
                     <p className="text-xs text-gray-500 truncate">
                       {profile?.phone || '+91 98765 43200'}
                     </p>
-                    <span className="inline-block mt-1 px-2 py-0.5 bg-[#D4F65B] text-black text-[10px] font-bold rounded-full uppercase tracking-wider">
-                      {profile?.role === 'owner' ? 'Owner / Admin' : 'Driver'}
-                    </span>
+                    <div className="flex items-center gap-1 mt-1">
+                      <span className="inline-block px-2 py-0.5 bg-[#D4F65B] text-black text-[10px] font-bold rounded-full uppercase tracking-wider">
+                        {profile?.role === 'owner' ? 'Owner / Admin' : 'Driver'}
+                      </span>
+                      {lastUpdated && (
+                        <span className="text-[10px] text-gray-400 font-mono">
+                          • {lastUpdated}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -192,8 +204,8 @@ export function MoveIQTopBar({
       {/* Floating notification feedback toast */}
       {showNotificationToast && (
         <div className="fixed top-18 left-1/2 -translate-x-1/2 z-50 bg-[#121316] text-white text-xs font-medium px-4 py-2.5 rounded-full shadow-lg flex items-center gap-2 border border-gray-700/50 animate-in fade-in duration-150">
-          <span className="w-2 h-2 rounded-full bg-[#8BE234]" />
-          <span>Real-time fleet tracking active (live sync on)</span>
+          <span className="w-2 h-2 rounded-full bg-[#8BE234] animate-pulse" />
+          <span>Real-time fleet tracking active • Last sync: {lastUpdated || 'Now'}</span>
         </div>
       )}
     </>

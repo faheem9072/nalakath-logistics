@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Users, Truck, Activity, Receipt, PlayCircle } from 'lucide-react';
+import { Users, Truck, Building2, Settings, PlayCircle, Receipt } from 'lucide-react';
 
 interface MoveIQBottomNavProps {
   role?: 'owner' | 'driver';
@@ -31,12 +31,24 @@ export function MoveIQBottomNav({
       href: '/vehicles',
       icon: Truck,
     },
+    {
+      id: 'companies',
+      label: 'Companies',
+      href: '/companies',
+      icon: Building2,
+    },
+    {
+      id: 'settings',
+      label: 'Settings',
+      href: '/settings',
+      icon: Settings,
+    },
   ];
 
   const driverItems = [
     {
       id: 'trip',
-      label: 'Today',
+      label: 'Drive',
       href: '/driver',
       icon: PlayCircle,
     },
@@ -57,24 +69,21 @@ export function MoveIQBottomNav({
         const isActive =
           activeTab !== undefined
             ? activeTab === item.id
-            : pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href));
+            : pathname === item.href ||
+              (item.href !== '/' && pathname.startsWith(item.href)) ||
+              (item.id === 'drivers' && pathname === '/dashboard');
 
         const content = (
           <div
-            className={`flex items-center justify-center gap-2 px-5 py-3 rounded-2xl transition-all cursor-pointer ${
+            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center transition-all cursor-pointer ${
               isActive
-                ? 'bg-[#121316] text-white shadow-sm'
-                : 'text-gray-400 hover:text-gray-800 hover:bg-gray-50'
+                ? 'bg-[#121316] text-white shadow-md scale-100'
+                : 'text-gray-400 hover:text-gray-800 hover:bg-gray-100/80 active:scale-95'
             }`}
+            title={item.label}
+            aria-label={item.label}
           >
             <Icon className="w-5 h-5" strokeWidth={isActive ? 2.2 : 1.8} />
-            <span
-              className={`text-xs font-bold transition-all ${
-                isActive ? 'inline-block' : 'hidden sm:inline-block text-gray-600'
-              }`}
-            >
-              {item.label}
-            </span>
           </div>
         );
 

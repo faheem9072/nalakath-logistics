@@ -78,7 +78,7 @@ export function InstallPwaButton({ className = '' }: { className?: string }) {
               <div className="flex items-center gap-2">
                 <Smartphone className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-sm font-bold">
-                  Install Nalakath App
+                  Install Nalakath Logistics App
                 </h3>
               </div>
               <button

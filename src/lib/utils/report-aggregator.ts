@@ -55,6 +55,7 @@ export function aggregateDriverReport(input: AggregateReportsInput): DriverRepor
   // Index trips by assignment_id
   const tripsByAssignment = new Map<string, Trip[]>();
   for (const t of trips) {
+    if (!t.assignment_id) continue;
     const list = tripsByAssignment.get(t.assignment_id) || [];
     list.push(t);
     tripsByAssignment.set(t.assignment_id, list);
@@ -214,6 +215,7 @@ export function aggregateVehicleReport(input: AggregateReportsInput): VehicleRep
 
   const tripsByAssignment = new Map<string, Trip[]>();
   for (const t of trips) {
+    if (!t.assignment_id) continue;
     const list = tripsByAssignment.get(t.assignment_id) || [];
     list.push(t);
     tripsByAssignment.set(t.assignment_id, list);
@@ -301,7 +303,7 @@ export function aggregateRouteReport(input: AggregateReportsInput): RouteReportI
 
   const tripsByRoute = new Map<string, Trip[]>();
   for (const t of trips) {
-    if (t.status !== 'completed') continue;
+    if (t.status !== 'completed' || !t.assignment_id) continue;
     const assignment = assignmentsMap.get(t.assignment_id);
     if (!assignment) continue;
     if (!isDateInRange(assignment.duty_date, startDate, endDate)) continue;
@@ -321,7 +323,7 @@ export function aggregateRouteReport(input: AggregateReportsInput): RouteReportI
     let totalDistanceKm = 0;
 
     for (const t of routeTrips) {
-      const assignment = assignmentsMap.get(t.assignment_id);
+      const assignment = t.assignment_id ? assignmentsMap.get(t.assignment_id) : undefined;
       if (assignment) {
         driversSet.add(assignment.driver_id);
         vehiclesSet.add(assignment.vehicle_id);
@@ -355,7 +357,7 @@ export function aggregateTeamReport(input: AggregateReportsInput): TeamReportIte
 
   const tripsByTeam = new Map<string, Trip[]>();
   for (const t of trips) {
-    if (t.status !== 'completed') continue;
+    if (t.status !== 'completed' || !t.assignment_id) continue;
     const assignment = assignmentsMap.get(t.assignment_id);
     if (!assignment) continue;
     if (!isDateInRange(assignment.duty_date, startDate, endDate)) continue;
@@ -374,7 +376,7 @@ export function aggregateTeamReport(input: AggregateReportsInput): TeamReportIte
     let totalDistanceKm = 0;
 
     for (const t of teamTrips) {
-      const assignment = assignmentsMap.get(t.assignment_id);
+      const assignment = t.assignment_id ? assignmentsMap.get(t.assignment_id) : undefined;
       if (assignment) {
         driversSet.add(assignment.driver_id);
         vehiclesSet.add(assignment.vehicle_id);

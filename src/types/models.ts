@@ -56,16 +56,40 @@ export interface VehicleMonthlyDriverStats {
 export interface VehicleTravelHistoryTrip {
   tripId: string;
   dutyDate: string;
+  driverId?: string;
   driverName: string;
   driverPhone: string;
+  routeName?: string;
+  destination?: string;
+  distance?: number;
   startPlace: string;
   endPlace: string;
   startOdometer: number | null;
   endOdometer: number | null;
+  startOdo?: number | null;
+  endOdo?: number | null;
   distanceKm: number;
   startLocation?: TripLocation | null;
   endLocation?: TripLocation | null;
+  notes?: string | null;
+  startTime?: string | null;
+  endTime?: string | null;
+  edited_by_owner_at?: string | null;
   status: string;
+}
+
+export interface VehicleTravelHistory {
+  vehicle: Vehicle;
+  totalKm: number;
+  totalTrips: number;
+  totalRecordedDistance?: number;
+  tripsCount?: number;
+  uniqueDrivers: {
+    driver: Driver;
+    tripsCount: number;
+    totalKm: number;
+  }[];
+  history: VehicleTravelHistoryTrip[];
 }
 
 export interface VehicleDetailReport {
@@ -82,6 +106,13 @@ export interface VehicleDetailReport {
   monthlyIncome: number;
   profitOrLoss: number;
   travelHistory: VehicleTravelHistoryTrip[];
+  expenseSummary: {
+    fuelTotal: number;
+    tollTotal: number;
+    maintenanceTotal: number;
+    otherTotal: number;
+    totalExpense: number;
+  };
   expenses: {
     totals: {
       fuel: number;

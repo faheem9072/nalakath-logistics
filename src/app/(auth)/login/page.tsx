@@ -1,41 +1,60 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
-import { Phone, Lock, ArrowRight, Shield, Smartphone, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Phone, Lock, ArrowRight, Shield, Smartphone, AlertCircle, KeyRound } from 'lucide-react';
 
-export default function LoginPage() {
+function LoginFormContent() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'driver' | 'owner'>('driver');
+  const searchParams = useSearchParams();
+  const roleParam = searchParams.get('role');
+
+  const [activeTab, setActiveTab] = useState<'driver' | 'owner'>(
+    roleParam === 'owner' ? 'owner' : 'driver'
+  );
+
+  useEffect(() => {
+    if (roleParam === 'owner') {
+      setActiveTab('owner');
+    } else if (roleParam === 'driver') {
+      setActiveTab('driver');
+    }
+  }, [roleParam]);
+
   const [driverPhone, setDriverPhone] = useState('');
-  const [ownerPhone, setOwnerPhone] = useState('+919876543200');
-  const [ownerPassword, setOwnerPassword] = useState('admin123');
+  const [driverPin, setDriverPin] = useState('');
+  const [ownerPassword, setOwnerPassword] = useState('kore2026');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Quick 1-tap demo drivers
   const DEMO_DRIVERS = [
-    { name: 'Refnise', phone: '+919400112233', vehicle: 'KL 84 B 3057' },
-    { name: 'Haneefa', phone: '+919400223344', vehicle: 'KL 84 B 3057' },
-    { name: 'Firoz', phone: '+919400334455', vehicle: 'KL 02 BG 3443' },
-    { name: 'Ameer', phone: '+919400445566', vehicle: 'KL 57 X 7384' },
-    { name: 'Ashin', phone: '+919400778899', vehicle: 'KL 08 BP 5682' },
+    { name: 'Refnise', phone: '9400112233', pin: '1234', vehicle: 'KL 84 B 3057' },
+    { name: 'Haneefa', phone: '9400223344', pin: '1234', vehicle: 'KL 84 B 3057' },
+    { name: 'Firoz', phone: '9400334455', pin: '1234', vehicle: 'KL 02 BG 3443' },
+    { name: 'Ameer', phone: '9400445566', pin: '1234', vehicle: 'KL 57 X 7384' },
+    { name: 'Ashin', phone: '9400778899', pin: '1234', vehicle: 'KL 08 BP 5682' },
   ];
 
-  const handleDriverLogin = async (e?: React.FormEvent, customPhone?: string) => {
+  const handleDriverLogin = async (e?: React.FormEvent, customPhone?: string, customPin?: string) => {
     if (e) e.preventDefault();
     setError(null);
     const targetPhone = customPhone || driverPhone;
+    const targetPin = customPin || driverPin;
 
-    if (!targetPhone) {
+    if (!targetPhone.trim()) {
       setError('Please enter your registered mobile number');
+      return;
+    }
+    if (!targetPin.trim()) {
+      setError('Please enter your 4-digit PIN');
       return;
     }
 
     setIsLoading(true);
     try {
-      await dataRepo.loginDriverByPhone(targetPhone);
+      await dataRepo.loginDriverByPhone(targetPhone, targetPin);
       router.push('/driver');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Login failed');
@@ -55,15 +74,10 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      // Demo password check or phone match
-      const profile = await dataRepo.loginByPhone(ownerPhone, '123456');
-      if (profile.role === 'owner' || profile.role === 'dispatcher') {
-        router.push('/dashboard');
-      } else {
-        router.push('/dashboard');
-      }
+      await dataRepo.loginOwner(ownerPassword);
+      router.push('/drivers');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Invalid owner credentials');
+      setError(err instanceof Error ? err.message : 'Invalid owner password');
     } finally {
       setIsLoading(false);
     }
@@ -72,25 +86,25 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-[#F2F4F7] flex flex-col justify-center px-4 py-8 sm:px-6">
       <div className="w-full max-w-md mx-auto space-y-6">
-        {/* MoveIQ Top Brand Badge with official Nalakath logo */}
+        {/* Top Brand Badge with Nalakath Logistics Logo & Name */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-3 bg-white px-4 py-2.5 rounded-2xl border border-gray-200/80 shadow-2xs">
+          <div className="inline-flex items-center gap-3 bg-white px-5 py-3 rounded-3xl border border-gray-200/80 shadow-2xs">
             <img
               src="/nalakath-logo.png"
               alt="Nalakath Logistics"
-              className="w-9 h-9 rounded-full object-cover shadow-xs border border-gray-100"
+              className="w-11 h-11 rounded-full object-contain shrink-0 shadow-xs border border-gray-100"
             />
             <div className="text-left">
-              <span className="font-extrabold text-base tracking-tight text-[#121316] block leading-none">
-                Nalakath
-              </span>
-              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider block leading-none mt-0.5">
-                Fleet Trip-Tracker
+              <h1 className="text-base sm:text-lg font-black text-[#121316] tracking-tight leading-none">
+                NALAKATH
+              </h1>
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-gray-500 block mt-0.5">
+                LOGISTICS
               </span>
             </div>
           </div>
           <p className="text-xs text-gray-500 font-medium pt-1">
-            Sign in to start trips or manage logistics
+            Sign in to start trips or manage fleet operations
           </p>
         </div>
 
@@ -141,7 +155,7 @@ export default function LoginPage() {
 
           {/* Driver Login Tab */}
           {activeTab === 'driver' && (
-            <form onSubmit={handleDriverLogin} className="space-y-4">
+            <form onSubmit={(e) => handleDriverLogin(e)} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
                   Mobile Number
@@ -157,8 +171,25 @@ export default function LoginPage() {
                     autoFocus
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                  4-Digit PIN
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="password"
+                    maxLength={4}
+                    placeholder="e.g. 1234"
+                    value={driverPin}
+                    onChange={(e) => setDriverPin(e.target.value)}
+                    className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-lg font-mono font-bold tracking-widest text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
+                  />
+                </div>
                 <p className="text-[11px] text-gray-400">
-                  Only phone numbers registered by the owner can log in.
+                  Default PIN for demo drivers is 1234 (managed by owner).
                 </p>
               </div>
 
@@ -167,28 +198,28 @@ export default function LoginPage() {
                 disabled={isLoading}
                 className="w-full h-12 bg-[#121316] hover:bg-black text-white text-sm font-bold rounded-2xl flex items-center justify-center gap-2 active:scale-98 transition-all shadow-sm cursor-pointer disabled:opacity-50"
               >
-                <span>{isLoading ? 'Verifying...' : 'Login'}</span>
+                <span>{isLoading ? 'Verifying...' : 'Login as Driver'}</span>
                 <ArrowRight className="w-4 h-4 text-[#D4F65B]" />
               </button>
 
               {/* Quick 1-Tap Driver Select for Demo */}
               <div className="pt-3 border-t border-gray-100 space-y-2">
                 <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block text-center">
-                  👉 Quick 1-Tap Driver Access (Demo)
+                  Quick 1-Tap Driver Login (Demo)
                 </span>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   {DEMO_DRIVERS.map((d) => (
                     <button
                       key={d.phone}
                       type="button"
-                      onClick={() => handleDriverLogin(undefined, d.phone)}
+                      onClick={() => handleDriverLogin(undefined, d.phone, d.pin)}
                       className="p-2.5 rounded-2xl bg-[#F8F9FA] hover:bg-gray-100 border border-gray-200/70 text-left transition-colors cursor-pointer group"
                     >
                       <p className="font-bold text-gray-900 group-hover:text-black">
                         {d.name}
                       </p>
                       <p className="text-[10px] text-gray-500 font-mono mt-0.5">
-                        {d.vehicle}
+                        {d.vehicle} • PIN: {d.pin}
                       </p>
                     </button>
                   ))}
@@ -202,27 +233,13 @@ export default function LoginPage() {
             <form onSubmit={handleOwnerLogin} className="space-y-4">
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Owner Phone / ID
-                </label>
-                <div className="relative">
-                  <Phone className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="tel"
-                    value={ownerPhone}
-                    onChange={(e) => setOwnerPhone(e.target.value)}
-                    className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-                  Password
+                  Owner Password
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="password"
+                    placeholder="Enter owner password"
                     value={ownerPassword}
                     onChange={(e) => setOwnerPassword(e.target.value)}
                     className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
@@ -240,13 +257,13 @@ export default function LoginPage() {
               </button>
 
               <div className="p-3 bg-gray-50 rounded-2xl text-center text-xs text-gray-500">
-                Default Owner credentials pre-filled for demo access.
+                Default Owner password: <span className="font-mono font-bold text-gray-800">kore2026</span>
               </div>
             </form>
           )}
         </div>
 
-        {/* Subtle Kore Footer */}
+        {/* Subtle Centered Kore Footer */}
         <footer className="text-center pt-2 text-[11px] font-medium text-gray-400">
           Designed and developed by Kore
         </footer>
@@ -254,3 +271,20 @@ export default function LoginPage() {
     </div>
   );
 }
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-[#F2F4F7] flex items-center justify-center p-4">
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-wider animate-pulse">
+            Loading Nalakath Portal...
+          </div>
+        </div>
+      }
+    >
+      <LoginFormContent />
+    </Suspense>
+  );
+}
+

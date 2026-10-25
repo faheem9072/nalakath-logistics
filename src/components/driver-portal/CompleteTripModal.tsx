@@ -363,11 +363,10 @@ export function CompleteTripModal({
               <button
                 type="button"
                 onClick={() => setActiveExpenseForm(activeExpenseForm === 'Fuel' ? null : 'Fuel')}
-                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${
-                  activeExpenseForm === 'Fuel'
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${activeExpenseForm === 'Fuel'
                     ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
                     : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                }`}
+                  }`}
               >
                 <Fuel className="w-4 h-4" />
                 <span>Fuel</span>
@@ -376,11 +375,10 @@ export function CompleteTripModal({
               <button
                 type="button"
                 onClick={() => setActiveExpenseForm(activeExpenseForm === 'Toll' ? null : 'Toll')}
-                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${
-                  activeExpenseForm === 'Toll'
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${activeExpenseForm === 'Toll'
                     ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
                     : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                }`}
+                  }`}
               >
                 <Receipt className="w-4 h-4" />
                 <span>Toll</span>
@@ -391,11 +389,10 @@ export function CompleteTripModal({
                 onClick={() =>
                   setActiveExpenseForm(activeExpenseForm === 'Maintenance' ? null : 'Maintenance')
                 }
-                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${
-                  activeExpenseForm === 'Maintenance'
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${activeExpenseForm === 'Maintenance'
                     ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
                     : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                }`}
+                  }`}
               >
                 <Wrench className="w-4 h-4" />
                 <span>Repair</span>
@@ -406,11 +403,10 @@ export function CompleteTripModal({
                 onClick={() =>
                   setActiveExpenseForm(activeExpenseForm === 'Parking' ? null : 'Parking')
                 }
-                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${
-                  activeExpenseForm === 'Parking'
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold border transition-all flex flex-col items-center justify-center gap-1 cursor-pointer active:scale-95 ${activeExpenseForm === 'Parking'
                     ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
                     : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                }`}
+                  }`}
               >
                 <CreditCard className="w-4 h-4" />
                 <span>Parking</span>
@@ -526,10 +522,10 @@ export function CompleteTripModal({
                         {exp.expense_type === 'Fuel'
                           ? '⛽ Fuel'
                           : exp.expense_type === 'Toll'
-                          ? '🛣️ Toll'
-                          : exp.expense_type === 'Maintenance'
-                          ? '🔧 Maintenance'
-                          : '🅿️ Parking/Other'}
+                            ? '🛣️ Toll'
+                            : exp.expense_type === 'Maintenance'
+                              ? '🔧 Maintenance'
+                              : '🅿️ Parking/Other'}
                       </span>
                       {exp.litres ? (
                         <span className="text-[10px] text-slate-500 font-mono">

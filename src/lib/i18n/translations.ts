@@ -2,9 +2,9 @@ export type Language = 'en' | 'ml';
 
 const en = {
   // Brand & Header
-  brandTitle: 'NALAKATH LOGISTICS',
-  brandSubtitle: 'Commercial Fleet & Duty Operations',
-  since1998: 'ESTD. 1998',
+  brandTitle: 'KORE',
+  brandSubtitle: 'Operations, Simplified',
+  since1998: 'FLEET OPERATIONS',
   liveOps: 'Live Ops',
   owner: 'Owner',
   dispatcher: 'Dispatcher',
@@ -30,7 +30,7 @@ const en = {
     navAudit: 'Audit Log',
 
     // Dashboard
-    dashTitle: 'Nalakath Logistics — Owner Dashboard',
+    dashTitle: 'Kore Fleet — Owner Dashboard',
     dashSubtitle: 'Real-time vehicle allocations, live transit tracking, and driver lookup.',
     addDriverBtn: 'Add Driver',
     assignDutyBtn: 'New Duty',
@@ -183,8 +183,8 @@ const en = {
     finishTripBtn: 'PUNCH OUT / SUBMIT',
 
     // Login Page
-    loginTitle: 'NALAKATH LOGISTICS',
-    loginTagline: 'Transport Operations System • Since 1998',
+    loginTitle: 'KORE FLEET',
+    loginTagline: 'Operations, Simplified',
     driverLoginTab: 'Driver Login',
     ownerLoginTab: 'Owner Login',
     driverLoginHeading: 'Driver Mobile Sign In',

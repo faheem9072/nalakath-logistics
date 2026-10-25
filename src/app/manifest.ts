@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Nalakath Logistics',
     short_name: 'Nalakath',
-    description: 'Fleet Operations, Driver Trip Punch Portal & Vehicle Tracking',
+    description: 'Nalakath Logistics fleet management and driver trip operations',
     start_url: '/',
     scope: '/',
     display: 'standalone',

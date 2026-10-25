@@ -30,7 +30,7 @@ import {
   FileSpreadsheet,
   Search,
 } from 'lucide-react';
-import { NalakathLogo } from '@/components/brand/NalakathLogo';
+import { KoreLogo } from '@/components/brand/KoreLogo';
 
 export default function ReportsPage() {
   const [activeTab, setActiveTab] = useState<'driver' | 'vehicle'>('driver');
@@ -255,13 +255,13 @@ export default function ReportsPage() {
       <div className="hidden print:block pb-5 mb-6 border-b-2 border-slate-900">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <NalakathLogo size="md" variant="circle" />
+            <KoreLogo size="md" variant="mark" theme="light" />
             <div>
               <h2 className="text-xl font-black text-slate-950 uppercase tracking-tight">
-                NALAKATH LOGISTICS
+                KORE FLEET OPERATIONS
               </h2>
-              <p className="text-xs font-bold text-rose-700 uppercase tracking-wider">
-                Fleet & Duty Operations • Established 1998
+              <p className="text-xs font-bold text-[#121316] uppercase tracking-wider">
+                Operations, Simplified
               </p>
               <p className="text-[10px] text-slate-500">
                 Official Commercial Logistics & Mileage Audit Report

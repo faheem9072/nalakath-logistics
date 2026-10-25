@@ -2,23 +2,25 @@
 
 import React, { useState, useEffect } from 'react';
 import { dataRepo, DriverMonthlySummary } from '@/lib/data-service';
-import { Driver, Trip } from '@/types/database';
+import { Driver, Vehicle } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
 import {
   ArrowLeft,
   Calendar,
   Truck,
-  Gauge,
   Phone,
   Pencil,
   Trash2,
-  CheckCircle,
-  Clock,
+  CheckCircle2,
   Archive,
   X,
   AlertCircle,
-  FileText,
+  Plus,
+  KeyRound,
+  ShieldCheck,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { triggerExcelDownload } from '@/lib/utils/download-excel';
 
 interface DriverDetailViewProps {
   driverId: string;
@@ -34,32 +36,68 @@ export function DriverDetailView({
   const [driver, setDriver] = useState<Driver | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
   const [summary, setSummary] = useState<DriverMonthlySummary | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
 
   // Edit Driver Modal
   const [isEditDriverOpen, setIsEditDriverOpen] = useState(false);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editPin, setEditPin] = useState('1234');
+  const [editIsActive, setEditIsActive] = useState(true);
   const [isSubmittingDriver, setIsSubmittingDriver] = useState(false);
   const [driverEditError, setDriverEditError] = useState<string | null>(null);
 
   // Edit Trip Modal (Owner Correction)
   const [editingTrip, setEditingTrip] = useState<DriverMonthlySummary['tripDetails'][0] | null>(null);
+  const [tripVehicleId, setTripVehicleId] = useState('');
+  const [tripStartPlace, setTripStartPlace] = useState('');
+  const [tripEndPlace, setTripEndPlace] = useState('');
   const [tripStartOdo, setTripStartOdo] = useState('');
   const [tripEndOdo, setTripEndOdo] = useState('');
+  const [tripStartTime, setTripStartTime] = useState('');
+  const [tripEndTime, setTripEndTime] = useState('');
   const [tripNotes, setTripNotes] = useState('');
   const [isSubmittingTrip, setIsSubmittingTrip] = useState(false);
   const [tripError, setTripError] = useState<string | null>(null);
 
+  // Add Missed Trip Modal
+  const [isAddTripOpen, setIsAddTripOpen] = useState(false);
+  const [addTripVehId, setAddTripVehId] = useState('');
+  const [addTripStartPlace, setAddTripStartPlace] = useState('Calicut Logistics Central');
+  const [addTripEndPlace, setAddTripEndPlace] = useState('Kochi Terminal');
+  const [addTripDate, setAddTripDate] = useState('2026-10-18');
+  const [addTripStartTime, setAddTripStartTime] = useState('08:00');
+  const [addTripEndTime, setAddTripEndTime] = useState('18:00');
+  const [addTripStartKm, setAddTripStartKm] = useState('');
+  const [addTripEndKm, setAddTripEndKm] = useState('');
+  const [addTripNotes, setAddTripNotes] = useState('');
+  const [addTripError, setAddTripError] = useState<string | null>(null);
+  const [isSubmittingAddTrip, setIsSubmittingAddTrip] = useState(false);
+
+  const showSavedNotice = (msg: string) => {
+    setSavedMessage(msg);
+    setTimeout(() => setSavedMessage(null), 3500);
+  };
+
   const loadDriverData = async () => {
     setIsLoading(true);
     try {
-      const drivers = await dataRepo.getDrivers();
+      const [drivers, allVehicles] = await Promise.all([
+        dataRepo.getDrivers(),
+        dataRepo.getVehicles(),
+      ]);
+      setVehicles(allVehicles);
+
       const current = drivers.find((d) => d.id === driverId);
       if (current) {
         setDriver(current);
         setEditName(current.full_name);
         setEditPhone(current.phone);
+        setEditPin(current.pin || '1234');
+        setEditIsActive(current.is_active !== false);
       }
 
       const res = await dataRepo.getDriverMonthlySummary(
@@ -76,7 +114,24 @@ export function DriverDetailView({
 
   useEffect(() => {
     loadDriverData();
+    const unsub = dataRepo.subscribe(loadDriverData);
+    const interval = setInterval(loadDriverData, 3000);
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, [driverId, selectedMonth]);
+
+  const handleOpenEditDriver = () => {
+    if (driver) {
+      setEditName(driver.full_name);
+      setEditPhone(driver.phone);
+      setEditPin(driver.pin || '1234');
+      setEditIsActive(driver.is_active !== false);
+      setDriverEditError(null);
+      setIsEditDriverOpen(true);
+    }
+  };
 
   const handleSaveDriver = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -87,8 +142,11 @@ export function DriverDetailView({
       await dataRepo.updateDriver(driver.id, {
         full_name: editName.trim(),
         phone: editPhone.trim(),
+        pin: editPin.trim() || '1234',
+        is_active: editIsActive,
       });
       setIsEditDriverOpen(false);
+      showSavedNotice('Driver details saved successfully!');
       await loadDriverData();
       if (onDriverUpdated) onDriverUpdated();
     } catch (err: unknown) {
@@ -100,8 +158,9 @@ export function DriverDetailView({
 
   const handleArchiveDriver = async () => {
     if (!driver) return;
-    if (confirm(`Archive driver "${driver.full_name}"? Driver will be marked inactive.`)) {
+    if (confirm(`Archive driver "${driver.full_name}"? Past trips and history will be preserved.`)) {
       await dataRepo.archiveDriver(driver.id);
+      showSavedNotice('Driver archived. Past trips preserved.');
       if (onDriverUpdated) onDriverUpdated();
       onBack();
     }
@@ -109,8 +168,14 @@ export function DriverDetailView({
 
   const handleOpenEditTrip = (trip: DriverMonthlySummary['tripDetails'][0]) => {
     setEditingTrip(trip);
+    const matchedVeh = vehicles.find((v) => v.registration_number === trip.vehicleRegistration);
+    setTripVehicleId(matchedVeh?.id || vehicles[0]?.id || '');
+    setTripStartPlace(trip.routeName || 'Calicut Logistics Central');
+    setTripEndPlace(trip.destination || 'Kerala Corridor');
     setTripStartOdo(trip.startOdo !== null ? String(trip.startOdo) : '');
     setTripEndOdo(trip.endOdo !== null ? String(trip.endOdo) : '');
+    setTripStartTime(trip.startTime ? trip.startTime.slice(0, 16) : '');
+    setTripEndTime(trip.endTime ? trip.endTime.slice(0, 16) : '');
     setTripNotes(trip.notes || '');
     setTripError(null);
   };
@@ -133,11 +198,17 @@ export function DriverDetailView({
     setIsSubmittingTrip(true);
     try {
       await dataRepo.updateTrip(editingTrip.tripId, {
+        vehicle_id: tripVehicleId || undefined,
+        start_place: tripStartPlace.trim() || undefined,
+        end_place: tripEndPlace.trim() || undefined,
         start_odometer: startNum,
         end_odometer: endNum,
+        start_time: tripStartTime || undefined,
+        end_time: tripEndTime || undefined,
         driver_notes: tripNotes.trim() || null,
       });
       setEditingTrip(null);
+      showSavedNotice('Trip entry corrected and saved!');
       await loadDriverData();
       if (onDriverUpdated) onDriverUpdated();
     } catch (err: unknown) {
@@ -147,11 +218,84 @@ export function DriverDetailView({
     }
   };
 
+  const handleOpenAddMissedTrip = () => {
+    setAddTripVehId(vehicles[0]?.id || '');
+    setAddTripStartPlace('Calicut Logistics Central');
+    setAddTripEndPlace('Kochi Terminal');
+    setAddTripDate(`${selectedMonth === 'ALL' ? '2026-10' : selectedMonth}-18`);
+    setAddTripStartTime('08:00');
+    setAddTripEndTime('18:00');
+    setAddTripStartKm('');
+    setAddTripEndKm('');
+    setAddTripNotes('Manual entry by owner');
+    setAddTripError(null);
+    setIsAddTripOpen(true);
+  };
+
+  const handleSaveAddMissedTrip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!addTripVehId) {
+      setAddTripError('Please select a vehicle');
+      return;
+    }
+    const startNum = parseFloat(addTripStartKm);
+    const endNum = parseFloat(addTripEndKm);
+
+    if (isNaN(startNum) || startNum < 0) {
+      setAddTripError('Please enter a valid Starting KM');
+      return;
+    }
+    if (isNaN(endNum) || endNum <= startNum) {
+      setAddTripError('Ending KM must be strictly greater than Starting KM');
+      return;
+    }
+
+    setIsSubmittingAddTrip(true);
+    try {
+      const startDateTime = `${addTripDate}T${addTripStartTime}:00`;
+      const endDateTime = `${addTripDate}T${addTripEndTime}:00`;
+
+      await dataRepo.addManualTrip({
+        driver_id: driverId,
+        vehicle_id: addTripVehId,
+        start_odometer: startNum,
+        end_odometer: endNum,
+        start_time: startDateTime,
+        end_time: endDateTime,
+        route_name: addTripStartPlace.trim(),
+        destination: addTripEndPlace.trim(),
+        driver_notes: addTripNotes.trim() || 'Added manually by owner',
+      });
+      setIsAddTripOpen(false);
+      showSavedNotice('Missed trip saved successfully!');
+      await loadDriverData();
+      if (onDriverUpdated) onDriverUpdated();
+    } catch (err: unknown) {
+      setAddTripError(err instanceof Error ? err.message : 'Failed to add missed trip');
+    } finally {
+      setIsSubmittingAddTrip(false);
+    }
+  };
+
   const handleDeleteTrip = async (tripId: string) => {
     if (confirm('Delete this trip entry? This cannot be undone.')) {
       await dataRepo.deleteTrip(tripId);
+      showSavedNotice('Trip deleted successfully!');
       await loadDriverData();
       if (onDriverUpdated) onDriverUpdated();
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!summary) return;
+    setIsDownloadingExcel(true);
+    try {
+      await triggerExcelDownload('driver', summary, selectedMonth);
+      showSavedNotice('Salary Excel report downloaded successfully!');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to download Excel file');
+    } finally {
+      setIsDownloadingExcel(false);
     }
   };
 
@@ -191,16 +335,38 @@ export function DriverDetailView({
           </select>
         </div>
 
-        {/* Edit Driver Header Action */}
-        <button
-          type="button"
-          onClick={() => setIsEditDriverOpen(true)}
-          className="w-11 h-11 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center text-gray-800 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
-          aria-label="Edit driver"
-        >
-          <Pencil className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {/* Download Excel Button */}
+          <button
+            type="button"
+            onClick={handleDownloadExcel}
+            disabled={isDownloadingExcel}
+            className="h-11 px-3 sm:px-3.5 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center gap-1.5 text-xs font-bold text-gray-800 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
+            title="Download salary Excel report for this month"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="hidden sm:inline">{isDownloadingExcel ? 'Exporting...' : 'Download Excel'}</span>
+          </button>
+
+          {/* Edit Driver Header Action */}
+          <button
+            type="button"
+            onClick={handleOpenEditDriver}
+            className="w-11 h-11 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center text-gray-800 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
+            aria-label="Edit driver"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        </div>
       </div>
+
+      {/* Saved Notification Banner */}
+      {savedMessage && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2 text-xs text-emerald-800 font-bold animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{savedMessage}</span>
+        </div>
+      )}
 
       {/* Driver Header Summary Card */}
       <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-3">
@@ -215,27 +381,42 @@ export function DriverDetailView({
             <p className="text-xs text-gray-500 font-mono mt-0.5 flex items-center gap-1">
               <Phone className="w-3.5 h-3.5 text-gray-400" />
               <span>{driver.phone}</span>
+              <span className="text-gray-300">•</span>
+              <KeyRound className="w-3.5 h-3.5 text-gray-400" />
+              <span>PIN: {driver.pin || '1234'}</span>
             </p>
           </div>
 
           <div className="flex flex-col items-end gap-1.5">
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold ${
-                driver.status === 'active'
+                driver.is_active !== false && driver.status === 'active'
                   ? 'bg-[#D4F65B] text-black'
                   : 'bg-gray-100 text-gray-500'
               }`}
             >
-              {driver.status === 'active' ? 'Active' : 'Inactive'}
+              {driver.is_active !== false ? 'Active' : 'Inactive'}
             </span>
-            <button
-              type="button"
-              onClick={handleArchiveDriver}
-              className="text-[11px] text-gray-400 hover:text-rose-600 flex items-center gap-1 cursor-pointer pt-1"
-            >
-              <Archive className="w-3 h-3" />
-              <span>Archive</span>
-            </button>
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleOpenEditDriver}
+                className="text-[11px] font-bold text-gray-700 hover:text-black flex items-center gap-1 cursor-pointer bg-gray-100 hover:bg-gray-200 px-2.5 py-1 rounded-xl transition-all"
+                title="Edit driver phone and login PIN"
+              >
+                <Pencil className="w-3 h-3" />
+                <span>Edit Credentials</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleArchiveDriver}
+                className="text-[11px] text-gray-400 hover:text-rose-600 flex items-center gap-1 cursor-pointer px-1 py-1"
+                title="Archive driver"
+              >
+                <Archive className="w-3 h-3" />
+                <span>Archive</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -272,7 +453,7 @@ export function DriverDetailView({
         </div>
       </MoveIQDarkCard>
 
-      {/* Which vehicles he drove (Some use one vehicle, some many) */}
+      {/* Which vehicles he drove */}
       <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
@@ -322,15 +503,39 @@ export function DriverDetailView({
         )}
       </div>
 
-      {/* Trip List with Owner Correction */}
+      {/* Trip List with Owner Full Edit & Missed Trip Addition */}
       <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
-            Trip List ({summary?.tripDetails.length || 0})
-          </h2>
-          <span className="text-[11px] text-gray-400 font-medium">
-            Tap edit to correct
-          </span>
+          <div>
+            <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
+              Trip List ({summary?.tripDetails.length || 0})
+            </h2>
+            <p className="text-[11px] text-gray-400">
+              Tap edit to change any detail or add missed trip
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              disabled={isDownloadingExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-[#121316] text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer shadow-2xs"
+              title="Download salary Excel report for this month"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{isDownloadingExcel ? 'Exporting...' : 'Download Excel'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleOpenAddMissedTrip}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#121316] text-white text-xs font-bold hover:bg-black transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#D4F65B]" />
+              <span>Add Missed Trip</span>
+            </button>
+          </div>
         </div>
 
         {summary?.tripDetails.length === 0 ? (
@@ -346,7 +551,7 @@ export function DriverDetailView({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-bold text-gray-900">
                         {trip.dutyDate}
                       </span>
@@ -354,9 +559,14 @@ export function DriverDetailView({
                       <span className="text-xs font-mono font-bold text-[#121316]">
                         {trip.vehicleRegistration}
                       </span>
+                      {trip.editedByOwnerAt && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          edited by owner • {new Date(trip.editedByOwnerAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-500 font-medium mt-0.5">
-                      {trip.destination}
+                    <p className="text-xs text-gray-600 font-medium mt-0.5">
+                      {trip.routeName || 'Calicut Logistics Central'} → {trip.destination || 'Kerala Corridor'}
                     </p>
                   </div>
 
@@ -365,7 +575,7 @@ export function DriverDetailView({
                       type="button"
                       onClick={() => handleOpenEditTrip(trip)}
                       className="p-1.5 rounded-xl text-gray-500 hover:text-black hover:bg-white transition-colors cursor-pointer"
-                      title="Correct trip"
+                      title="Edit trip details"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
@@ -402,7 +612,7 @@ export function DriverDetailView({
         )}
       </div>
 
-      {/* Edit Driver Modal */}
+      {/* Edit Driver Modal (Name, Phone, PIN reset, Active/Inactive) */}
       {isEditDriverOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150">
@@ -453,6 +663,45 @@ export function DriverDetailView({
                 />
               </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Login PIN (Reset)
+                </label>
+                <input
+                  type="text"
+                  value={editPin}
+                  onChange={(e) => setEditPin(e.target.value)}
+                  placeholder="e.g. 1234"
+                  maxLength={6}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-mono font-bold text-[#121316] focus:outline-none focus:border-gray-400"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <label className="text-xs font-bold text-gray-700 uppercase block">
+                  Driver Status
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold">
+                    <input
+                      type="radio"
+                      checked={editIsActive}
+                      onChange={() => setEditIsActive(true)}
+                    />
+                    <span>Active</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-500">
+                    <input
+                      type="radio"
+                      checked={!editIsActive}
+                      onChange={() => setEditIsActive(false)}
+                    />
+                    <span>Inactive</span>
+                  </label>
+                </div>
+              </div>
+
               <div className="pt-2 flex items-center gap-2">
                 <button
                   type="button"
@@ -474,13 +723,13 @@ export function DriverDetailView({
         </div>
       )}
 
-      {/* Edit Trip Modal (Owner Correction) */}
+      {/* Edit Trip Modal (Owner Full Control: vehicle, start/end place, start/end KM, start/end time, notes) */}
       {editingTrip && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
-          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150">
+          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-black text-[#121316]">
-                Correct Trip Entry
+                Edit Trip (Owner Control)
               </h3>
               <button
                 type="button"
@@ -491,10 +740,6 @@ export function DriverDetailView({
               </button>
             </div>
 
-            <p className="text-xs text-gray-500">
-              {editingTrip.dutyDate} • {editingTrip.vehicleRegistration}
-            </p>
-
             {tripError && (
               <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded-xl flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
@@ -503,6 +748,50 @@ export function DriverDetailView({
             )}
 
             <form onSubmit={handleSaveTripCorrection} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Vehicle
+                </label>
+                <select
+                  value={tripVehicleId}
+                  onChange={(e) => setTripVehicleId(e.target.value)}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 cursor-pointer"
+                >
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.registration_number} ({v.make_model})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start Place
+                  </label>
+                  <input
+                    type="text"
+                    value={tripStartPlace}
+                    onChange={(e) => setTripStartPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    placeholder="Origin"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End Place
+                  </label>
+                  <input
+                    type="text"
+                    value={tripEndPlace}
+                    onChange={(e) => setTripEndPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    placeholder="Destination"
+                  />
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-gray-700 uppercase">
@@ -533,9 +822,36 @@ export function DriverDetailView({
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start Time
+                  </label>
+                  <input
+                    type="text"
+                    value={tripStartTime}
+                    onChange={(e) => setTripStartTime(e.target.value)}
+                    placeholder="YYYY-MM-DDTHH:MM"
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End Time
+                  </label>
+                  <input
+                    type="text"
+                    value={tripEndTime}
+                    onChange={(e) => setTripEndTime(e.target.value)}
+                    placeholder="YYYY-MM-DDTHH:MM"
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-700 uppercase">
-                  Trip Notes / Correction Reason
+                  Driver Notes / Reason
                 </label>
                 <input
                   type="text"
@@ -559,7 +875,300 @@ export function DriverDetailView({
                   disabled={isSubmittingTrip}
                   className="flex-1 h-11 rounded-xl bg-[#121316] text-white font-bold text-xs hover:bg-black cursor-pointer"
                 >
-                  {isSubmittingTrip ? 'Updating...' : 'Save Correction'}
+                  {isSubmittingTrip ? 'Saving...' : 'Save Changes'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Missed Trip Modal */}
+      {isAddTripOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-[#121316]">
+                Add Missed Trip Manually
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAddTripOpen(false)}
+                className="p-1 rounded-full text-gray-400 hover:text-black cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500">
+              Add a past trip completed by <strong>{driver.full_name}</strong>.
+            </p>
+
+            {addTripError && (
+              <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{addTripError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveAddMissedTrip} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Vehicle Driven
+                </label>
+                <select
+                  value={addTripVehId}
+                  onChange={(e) => setAddTripVehId(e.target.value)}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 cursor-pointer"
+                  required
+                >
+                  {vehicles.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.registration_number} ({v.make_model})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start Place
+                  </label>
+                  <input
+                    type="text"
+                    value={addTripStartPlace}
+                    onChange={(e) => setAddTripStartPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End Place
+                  </label>
+                  <input
+                    type="text"
+                    value={addTripEndPlace}
+                    onChange={(e) => setAddTripEndPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Trip Date
+                  </label>
+                  <input
+                    type="date"
+                    value={addTripDate}
+                    onChange={(e) => setAddTripDate(e.target.value)}
+                    className="w-full h-11 px-2 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start Time
+                  </label>
+                  <input
+                    type="time"
+                    value={addTripStartTime}
+                    onChange={(e) => setAddTripStartTime(e.target.value)}
+                    className="w-full h-11 px-2 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End Time
+                  </label>
+                  <input
+                    type="time"
+                    value={addTripEndTime}
+                    onChange={(e) => setAddTripEndTime(e.target.value)}
+                    className="w-full h-11 px-2 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start KM
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="e.g. 15000"
+                    value={addTripStartKm}
+                    onChange={(e) => setAddTripStartKm(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End KM
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    placeholder="e.g. 15120"
+                    value={addTripEndKm}
+                    onChange={(e) => setAddTripEndKm(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={addTripNotes}
+                  onChange={(e) => setAddTripNotes(e.target.value)}
+                  placeholder="Optional driver or trip notes"
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm text-[#121316] focus:outline-none focus:border-gray-400"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddTripOpen(false)}
+                  className="flex-1 h-11 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAddTrip}
+                  className="flex-1 h-11 rounded-xl bg-[#121316] text-white font-bold text-xs hover:bg-black cursor-pointer"
+                >
+                  {isSubmittingAddTrip ? 'Saving...' : 'Add Trip'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Driver Credentials Modal */}
+      {isEditDriverOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-[#121316]">
+                Edit Driver Credentials
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsEditDriverOpen(false)}
+                className="p-1 rounded-full text-gray-400 hover:text-black cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {driverEditError && (
+              <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{driverEditError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveDriver} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Driver Name
+                </label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                  <span>Mobile Number (Login ID)</span>
+                </label>
+                <input
+                  type="tel"
+                  value={editPhone}
+                  onChange={(e) => setEditPhone(e.target.value)}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                  required
+                />
+                <p className="text-[11px] text-gray-400">Driver logs in with this mobile number.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                  <span>Login Password / PIN (4 digits)</span>
+                  <span className="text-[10px] text-gray-400 font-normal">Change/Reset</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  placeholder="1234"
+                  value={editPin}
+                  onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  required
+                />
+                <p className="text-[11px] text-gray-400">Driver uses this 4-digit PIN as their password.</p>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <label className="text-xs font-bold text-gray-700 uppercase block">
+                  Driver Status
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold">
+                    <input
+                      type="radio"
+                      checked={editIsActive}
+                      onChange={() => setEditIsActive(true)}
+                    />
+                    <span>Active</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-500">
+                    <input
+                      type="radio"
+                      checked={!editIsActive}
+                      onChange={() => setEditIsActive(false)}
+                    />
+                    <span>Inactive</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditDriverOpen(false)}
+                  className="flex-1 h-11 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingDriver}
+                  className="flex-1 h-11 rounded-xl bg-[#121316] text-white font-bold text-xs hover:bg-black cursor-pointer"
+                >
+                  {isSubmittingDriver ? 'Saving...' : 'Save Credentials'}
                 </button>
               </div>
             </form>

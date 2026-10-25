@@ -9,7 +9,7 @@ export function SplashScreen() {
   useEffect(() => {
     // Check if splash has already been shown in this browser session
     try {
-      const alreadyShown = sessionStorage.getItem('nalakath_splash_shown');
+      const alreadyShown = sessionStorage.getItem('kore_splash_shown');
       if (alreadyShown) {
         setIsVisible(false);
         return;
@@ -18,19 +18,19 @@ export function SplashScreen() {
       // ignore storage errors
     }
 
-    // Show for 1.4s, then fade out over 300ms
+    // Show for 1.3s, fade out over 250ms (~1.5s total)
     const fadeTimer = setTimeout(() => {
       setIsFading(true);
-    }, 1400);
+    }, 1300);
 
     const removeTimer = setTimeout(() => {
       setIsVisible(false);
       try {
-        sessionStorage.setItem('nalakath_splash_shown', 'true');
+        sessionStorage.setItem('kore_splash_shown', 'true');
       } catch {
         // ignore
       }
-    }, 1750);
+    }, 1550);
 
     return () => {
       clearTimeout(fadeTimer);
@@ -49,38 +49,38 @@ export function SplashScreen() {
     >
       <div />
 
-      {/* Center Logo & Brand Identity */}
-      <div className="flex flex-col items-center text-center space-y-5 animate-in zoom-in-95 duration-500">
-        <div className="relative">
-          <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-white/10 shadow-2xl border border-white/20 flex items-center justify-center">
+      {/* Center Nalakath Logistics Logo & Brand Identity */}
+      <div className="flex flex-col items-center text-center space-y-5 animate-in zoom-in-95 duration-400">
+        <div className="relative flex items-center justify-center">
+          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden p-1 shadow-2xl border-2 border-stone-700 flex items-center justify-center bg-black">
             <img
               src="/nalakath-logo.png"
               alt="Nalakath Logistics"
-              className="w-full h-full object-contain rounded-full"
+              className="w-full h-full object-contain"
             />
           </div>
           {/* Subtle lime glow ring */}
-          <div className="absolute inset-0 rounded-full border border-[#D4F65B]/40 animate-ping opacity-30" />
+          <div className="absolute inset-0 rounded-full border border-[#D4F65B]/30 animate-ping opacity-25 pointer-events-none" />
         </div>
 
         <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white uppercase">
-            Nalakath Logistics
+          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-wider">
+            NALAKATH
           </h1>
-          <p className="text-xs font-semibold tracking-widest uppercase text-gray-400">
-            Fleet Trip-Tracker • Since 1998
+          <p className="text-xs font-bold text-[#D4F65B] tracking-widest uppercase">
+            LOGISTICS • SINCE 1998
           </p>
         </div>
 
         {/* Smooth loading bar indicator in MoveIQ Lime accent */}
-        <div className="w-36 h-1 bg-white/10 rounded-full overflow-hidden mt-4">
+        <div className="w-32 h-1 bg-white/10 rounded-full overflow-hidden mt-3">
           <div className="h-full bg-[#D4F65B] rounded-full animate-pulse w-3/4" />
         </div>
       </div>
 
-      {/* Kore Footer on Splash */}
+      {/* Subtle Kore Footer */}
       <div className="text-center">
-        <p className="text-[11px] font-medium text-gray-500 tracking-wide">
+        <p className="text-[11px] font-medium text-gray-400 tracking-wide">
           Designed and developed by Kore
         </p>
       </div>

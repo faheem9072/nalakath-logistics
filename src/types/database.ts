@@ -1,9 +1,9 @@
 export type UserRole = 'owner' | 'dispatcher' | 'driver';
 
-export type VehicleStatus = 'active' | 'maintenance' | 'inactive';
+export type VehicleStatus = 'active' | 'maintenance' | 'inactive' | 'on_trip' | 'idle';
 export type VehicleType = 'bus' | 'mini_bus' | 'van' | 'truck' | 'car' | 'other';
 
-export type DriverStatus = 'active' | 'inactive' | 'on_leave';
+export type DriverStatus = 'active' | 'inactive' | 'on_leave' | 'on_trip' | 'idle';
 
 export type AssignmentStatus =
   | 'scheduled'
@@ -68,13 +68,16 @@ export interface Vehicle {
   vehicle_type: VehicleType;
   capacity: number;
   current_odometer: number;
+  initial_km?: number;
   status: VehicleStatus;
+  company_id?: string;
   company?: ClientCompany | string;
   is_adhoc?: boolean;
   route_location?: string;
   default_driver_names?: string[];
   default_driver_ids?: string[];
   notes: string | null;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +86,7 @@ export type ExpenseType = 'Fuel' | 'Toll' | 'Maintenance' | 'Other';
 
 export interface Expense {
   id: string;
+  trip_id?: string | null;
   vehicle_id: string;
   driver_id: string;
   expense_type: ExpenseType;
@@ -91,6 +95,7 @@ export interface Expense {
   litres?: number | null;
   note?: string | null;
   bill_photo_url?: string | null;
+  edited_by_owner_at?: string | null;
   created_at: string;
   updated_at?: string;
 }
@@ -107,6 +112,13 @@ export interface Driver {
   is_fixed_route: boolean;
   default_route_id: string | null;
   status: DriverStatus;
+  role?: 'driver';
+  is_active?: boolean;
+  allow_next_trip_override?: number;
+  is_in_cooldown?: boolean;
+  cooldown_remaining_minutes?: number;
+  cooldown_until?: string | null;
+  pin?: string;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -141,18 +153,23 @@ export interface TripLocation {
 
 export interface Trip {
   id: string;
-  assignment_id: string;
+  assignment_id?: string;
   trip_number: number;
   status: TripStatus;
+  driver_id?: string;
+  vehicle_id?: string;
   start_time: string | null;
   end_time: string | null;
   start_odometer: number | null;
   end_odometer: number | null;
-  assigned_route_id: string | null;
-  actual_destination: string | null;
+  assigned_route_id?: string | null;
+  actual_destination?: string | null;
+  destination?: string | null;
+  route_name?: string | null;
   driver_notes: string | null;
   start_location?: TripLocation | null;
   end_location?: TripLocation | null;
+  edited_by_owner_at?: string | null;
   created_at: string;
   updated_at: string;
 }

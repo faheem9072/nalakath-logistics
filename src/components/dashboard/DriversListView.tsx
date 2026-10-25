@@ -18,6 +18,9 @@ import {
   X,
   AlertCircle,
   Radio,
+  Zap,
+  CheckCircle2,
+  KeyRound,
 } from 'lucide-react';
 
 interface DriverWithStatus extends Driver {
@@ -41,6 +44,7 @@ export function DriversListView() {
   const [isAddDriverOpen, setIsAddDriverOpen] = useState(false);
   const [addName, setAddName] = useState('');
   const [addPhone, setAddPhone] = useState('');
+  const [addPin, setAddPin] = useState('1234');
   const [addError, setAddError] = useState<string | null>(null);
   const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
 
@@ -48,8 +52,16 @@ export function DriversListView() {
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [editName, setEditName] = useState('');
   const [editPhone, setEditPhone] = useState('');
+  const [editPin, setEditPin] = useState('1234');
+  const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+
+  const showSavedNotice = (msg: string) => {
+    setSavedNotice(msg);
+    setTimeout(() => setSavedNotice(null), 3500);
+  };
 
   const loadData = async () => {
     try {
@@ -89,9 +101,12 @@ export function DriversListView() {
 
   useEffect(() => {
     loadData();
-    // Live update polling every 4s so owner sees status instantly
-    const interval = setInterval(loadData, 4000);
-    return () => clearInterval(interval);
+    const unsub = dataRepo.subscribe(loadData);
+    const interval = setInterval(loadData, 3000);
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, []);
 
   const handleAddDriver = async (e: React.FormEvent) => {
@@ -107,10 +122,13 @@ export function DriversListView() {
       await dataRepo.createDriver({
         full_name: addName.trim(),
         phone: addPhone.trim(),
+        pin: addPin.trim() || '1234',
       });
       setIsAddDriverOpen(false);
       setAddName('');
       setAddPhone('');
+      setAddPin('1234');
+      showSavedNotice('New driver registered successfully!');
       await loadData();
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Failed to add driver');
@@ -124,6 +142,8 @@ export function DriversListView() {
     setEditingDriver(d);
     setEditName(d.full_name);
     setEditPhone(d.phone);
+    setEditPin(d.pin || '1234');
+    setEditIsActive(d.is_active !== false);
     setEditError(null);
   };
 
@@ -136,8 +156,11 @@ export function DriversListView() {
       await dataRepo.updateDriver(editingDriver.id, {
         full_name: editName.trim(),
         phone: editPhone.trim(),
+        pin: editPin.trim() || '1234',
+        is_active: editIsActive,
       });
       setEditingDriver(null);
+      showSavedNotice('Driver details saved!');
       await loadData();
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : 'Failed to edit driver');
@@ -150,6 +173,7 @@ export function DriversListView() {
     e.stopPropagation();
     if (confirm(`Archive driver "${driverName}"? Driver will be marked inactive.`)) {
       await dataRepo.archiveDriver(driverId);
+      showSavedNotice('Driver marked inactive. Past trips preserved.');
       await loadData();
     }
   };
@@ -193,6 +217,13 @@ export function DriversListView() {
         onPlusClick={() => setIsAddDriverOpen(true)}
       />
 
+      {savedNotice && (
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{savedNotice}</span>
+        </div>
+      )}
+
       {/* Hero Lime Card (MoveIQ: "Vehicle on the road" style) */}
       <MoveIQLimeHeroCard
         title="Fleet on the road"
@@ -234,38 +265,44 @@ export function DriversListView() {
                 className="bg-white rounded-[26px] p-4 sm:p-5 border border-gray-100 shadow-2xs hover:shadow-xs transition-all cursor-pointer flex items-center justify-between gap-3 group active:scale-[0.99]"
               >
                 {/* Left: Avatar + Driver Info */}
-                <div className="flex items-center gap-3.5 min-w-0">
+                <div className="flex items-center gap-3.5 min-w-0 flex-1">
                   <div className="w-12 h-12 rounded-2xl bg-[#121316] text-white flex items-center justify-center font-bold text-base shrink-0 shadow-2xs">
                     {d.full_name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-extrabold text-[#121316] text-sm sm:text-base tracking-tight truncate">
                         {d.full_name}
                       </h3>
                       {/* Status Chip (On trip / Idle) */}
                       {isOnTrip ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D4F65B] text-black">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D4F65B] text-black shrink-0">
                           <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
                           <span>On trip</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500 shrink-0">
                           Idle
                         </span>
                       )}
                     </div>
 
-                    <p className="text-xs text-gray-500 font-mono flex items-center gap-1 mt-0.5">
-                      <Phone className="w-3 h-3 text-gray-400" />
-                      <span>{d.phone}</span>
-                    </p>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <p className="text-xs text-gray-500 font-mono flex items-center gap-1 shrink-0">
+                        <Phone className="w-3 h-3 text-gray-400" />
+                        <span>{d.phone}</span>
+                      </p>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-gray-700 bg-gray-100 border border-gray-200 px-2 py-0.5 rounded-md shrink-0">
+                        <KeyRound className="w-2.5 h-2.5 text-gray-400" />
+                        <span>PIN: {d.pin || '1234'}</span>
+                      </span>
+                    </div>
 
                     {/* Vehicle currently on */}
                     <div className="flex items-center gap-1 text-xs mt-1">
-                      <Truck className="w-3.5 h-3.5 text-gray-400" />
+                      <Truck className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                       {isOnTrip ? (
-                        <span className="font-bold text-[#121316]">
+                        <span className="font-bold text-[#121316] truncate">
                           {d.activeTripInfo?.vehicleRegistration}{' '}
                           <span className="text-gray-400 font-normal">
                             ({d.activeTripInfo?.vehicleModel})
@@ -281,12 +318,12 @@ export function DriversListView() {
                 </div>
 
                 {/* Right: Actions & Arrow */}
-                <div className="flex items-center gap-1 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
                     onClick={(e) => handleOpenEdit(d, e)}
                     className="p-2 rounded-xl text-gray-400 hover:text-black hover:bg-gray-100 transition-colors cursor-pointer"
-                    title="Edit driver"
+                    title="Edit driver phone and login PIN"
                   >
                     <Pencil className="w-3.5 h-3.5" />
                   </button>
@@ -351,8 +388,9 @@ export function DriversListView() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-700 uppercase">
-                  Mobile Number
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                  <span>Mobile Number (Login ID)</span>
+                  <span className="text-[10px] text-gray-400 font-normal">Required</span>
                 </label>
                 <input
                   type="tel"
@@ -362,6 +400,24 @@ export function DriversListView() {
                   className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
                   required
                 />
+                <p className="text-[11px] text-gray-400">Driver logs in using this phone number.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                  <span>Login Password / PIN (4 digits)</span>
+                  <span className="text-[10px] text-gray-400 font-normal">Default: 1234</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  placeholder="1234"
+                  value={addPin}
+                  onChange={(e) => setAddPin(e.target.value.replace(/\D/g, ''))}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  required
+                />
+                <p className="text-[11px] text-gray-400">Driver uses this 4-digit PIN as their password.</p>
               </div>
 
               <div className="pt-2 flex items-center gap-2">
@@ -424,8 +480,8 @@ export function DriversListView() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-700 uppercase">
-                  Mobile Number
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                  <span>Mobile Number (Login ID)</span>
                 </label>
                 <input
                   type="tel"
@@ -434,6 +490,48 @@ export function DriversListView() {
                   className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
                   required
                 />
+                <p className="text-[11px] text-gray-400">Driver logs in using this phone number.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                  <span>Login Password / PIN (4 digits)</span>
+                  <span className="text-[10px] text-gray-400 font-normal">Change/Reset</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  placeholder="1234"
+                  value={editPin}
+                  onChange={(e) => setEditPin(e.target.value.replace(/\D/g, ''))}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  required
+                />
+                <p className="text-[11px] text-gray-400">Driver uses this 4-digit PIN as their login password.</p>
+              </div>
+
+              <div className="space-y-1 pt-1">
+                <label className="text-xs font-bold text-gray-700 uppercase block">
+                  Driver Status
+                </label>
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold">
+                    <input
+                      type="radio"
+                      checked={editIsActive}
+                      onChange={() => setEditIsActive(true)}
+                    />
+                    <span>Active</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-500">
+                    <input
+                      type="radio"
+                      checked={!editIsActive}
+                      onChange={() => setEditIsActive(false)}
+                    />
+                    <span>Inactive</span>
+                  </label>
+                </div>
               </div>
 
               <div className="pt-2 flex items-center gap-2">

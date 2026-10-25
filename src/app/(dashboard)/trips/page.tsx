@@ -80,6 +80,7 @@ export default function TripsPage() {
                   <th className="px-5 py-3.5">Vehicle</th>
                   <th className="px-5 py-3.5">Driver</th>
                   <th className="px-5 py-3.5">Route / Destination</th>
+                  <th className="px-5 py-3.5">Location</th>
                   <th className="px-5 py-3.5">Odometer (Start → End)</th>
                   <th className="px-5 py-3.5">Distance</th>
                   <th className="px-5 py-3.5">Status</th>
@@ -88,6 +89,21 @@ export default function TripsPage() {
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 {filteredTrips.map((trip) => {
                   const dist = calculateTripDistance(trip.start_odometer, trip.end_odometer);
+
+                  let hasLocation = false;
+                  let locationText = '';
+                  try {
+                    let parsedLoc: any = trip.start_location;
+                    if (typeof parsedLoc === 'string') parsedLoc = JSON.parse(parsedLoc);
+                    if (
+                      parsedLoc &&
+                      !parsedLoc.no_location &&
+                      (typeof parsedLoc.latitude === 'number' || typeof parsedLoc.longitude === 'number')
+                    ) {
+                      hasLocation = true;
+                      locationText = parsedLoc.address || parsedLoc.place_name || `GPS (${parsedLoc.latitude?.toFixed(4)}, ${parsedLoc.longitude?.toFixed(4)})`;
+                    }
+                  } catch {}
 
                   return (
                     <tr key={trip.id} className="hover:bg-slate-50/80 transition-colors">
@@ -128,6 +144,21 @@ export default function TripsPage() {
                           <div className="text-[11px] text-slate-400 italic truncate mt-0.5">
                             Notes: {trip.driver_notes}
                           </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        {hasLocation ? (
+                          <span
+                            className="inline-flex items-center gap-1 text-xs text-slate-700 max-w-[160px] truncate"
+                            title={locationText}
+                          >
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                            <span className="truncate">{locationText}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                            No location
+                          </span>
                         )}
                       </td>
                       <td className="px-5 py-4 font-mono text-xs">

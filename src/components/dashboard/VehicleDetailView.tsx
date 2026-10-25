@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { dataRepo } from '@/lib/data-service';
-import { VehicleDetailReport, ExpenseWithDetails } from '@/types/models';
-import { Vehicle, ExpenseType, ClientCompany, VehicleType, VehicleStatus, TripLocation } from '@/types/database';
+import { VehicleDetailReport, ExpenseWithDetails, VehicleTravelHistoryTrip } from '@/types/models';
+import { Vehicle, ExpenseType, ClientCompany, VehicleType, Driver, TripLocation } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
 import { TripMapModal } from '@/components/map/TripMapModal';
 import {
@@ -20,13 +20,16 @@ import {
   Archive,
   X,
   AlertCircle,
-  CheckCircle,
+  CheckCircle2,
   TrendingUp,
   TrendingDown,
   Layers,
   MapPin,
-  Navigation,
+  Clock,
+  User,
+  FileSpreadsheet,
 } from 'lucide-react';
+import { triggerExcelDownload } from '@/lib/utils/download-excel';
 
 interface VehicleDetailViewProps {
   vehicleQuery?: string;
@@ -48,16 +51,23 @@ export function VehicleDetailView({
   const effectiveQuery = vehicleQuery || initialVehicleQuery || '3057';
   const [report, setReport] = useState<VehicleDetailReport | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth || '2026-10');
+  const [drivers, setDrivers] = useState<Driver[]>([]);
+  const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [isDownloadingExcel, setIsDownloadingExcel] = useState(false);
 
   // Edit Vehicle Details Modal
   const [isEditVehicleOpen, setIsEditVehicleOpen] = useState(false);
   const [editRegNo, setEditRegNo] = useState('');
   const [editModel, setEditModel] = useState('');
+  const [editCompanyId, setEditCompanyId] = useState('');
   const [editCompany, setEditCompany] = useState<ClientCompany>('Delhivery');
   const [editRouteLocation, setEditRouteLocation] = useState('');
   const [editType, setEditType] = useState<VehicleType>('truck');
+  const [editInitialKm, setEditInitialKm] = useState('');
   const [editOdo, setEditOdo] = useState('');
+  const [editIsActive, setEditIsActive] = useState(true);
   const [isSubmittingVehicle, setIsSubmittingVehicle] = useState(false);
   const [vehicleEditError, setVehicleEditError] = useState<string | null>(null);
 
@@ -66,9 +76,10 @@ export function VehicleDetailView({
   const [incomeAmountInput, setIncomeAmountInput] = useState('');
   const [isSubmittingIncome, setIsSubmittingIncome] = useState(false);
 
-  // Add / Edit Expense Modal (Owner Correction)
+  // Add / Edit Expense Modal (Owner Correction & Add on behalf of driver)
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [expDriverId, setExpDriverId] = useState('');
   const [expType, setExpType] = useState<ExpenseType>('Fuel');
   const [expAmount, setExpAmount] = useState('');
   const [expDate, setExpDate] = useState('2026-10-18');
@@ -76,6 +87,33 @@ export function VehicleDetailView({
   const [expNote, setExpNote] = useState('');
   const [expError, setExpError] = useState<string | null>(null);
   const [isSubmittingExp, setIsSubmittingExp] = useState(false);
+
+  // Trip Edit Modal
+  const [editingTrip, setEditingTrip] = useState<VehicleTravelHistoryTrip | null>(null);
+  const [tripDriverId, setTripDriverId] = useState('');
+  const [tripStartPlace, setTripStartPlace] = useState('');
+  const [tripEndPlace, setTripEndPlace] = useState('');
+  const [tripStartOdo, setTripStartOdo] = useState('');
+  const [tripEndOdo, setTripEndOdo] = useState('');
+  const [tripStartTime, setTripStartTime] = useState('');
+  const [tripEndTime, setTripEndTime] = useState('');
+  const [tripNotes, setTripNotes] = useState('');
+  const [tripError, setTripError] = useState<string | null>(null);
+  const [isSubmittingTrip, setIsSubmittingTrip] = useState(false);
+
+  // Add Missed Trip Modal
+  const [isAddTripOpen, setIsAddTripOpen] = useState(false);
+  const [addTripDriverId, setAddTripDriverId] = useState('');
+  const [addTripStartPlace, setAddTripStartPlace] = useState('Calicut Hub');
+  const [addTripEndPlace, setAddTripEndPlace] = useState('Kochi Terminal');
+  const [addTripDate, setAddTripDate] = useState('2026-10-18');
+  const [addTripStartTime, setAddTripStartTime] = useState('08:00');
+  const [addTripEndTime, setAddTripEndTime] = useState('18:00');
+  const [addTripStartKm, setAddTripStartKm] = useState('');
+  const [addTripEndKm, setAddTripEndKm] = useState('');
+  const [addTripNotes, setAddTripNotes] = useState('');
+  const [addTripError, setAddTripError] = useState<string | null>(null);
+  const [isSubmittingAddTrip, setIsSubmittingAddTrip] = useState(false);
 
   // Map Modal for Travel History
   const [selectedMapTrip, setSelectedMapTrip] = useState<{
@@ -93,18 +131,34 @@ export function VehicleDetailView({
   } | null>(null);
   const [isMapOpen, setIsMapOpen] = useState(false);
 
+  const showSavedNotice = (msg: string) => {
+    setSavedMessage(msg);
+    setTimeout(() => setSavedMessage(null), 3500);
+  };
+
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const data = await dataRepo.getVehicleDetail(effectiveQuery, selectedMonth);
+      const [data, drvList, compList] = await Promise.all([
+        dataRepo.getVehicleDetail(effectiveQuery, selectedMonth),
+        dataRepo.getDrivers(),
+        dataRepo.getCompanies(),
+      ]);
+
       setReport(data);
+      setDrivers(drvList);
+      setCompanies(compList);
+
       if (data) {
         setEditRegNo(data.vehicle.registration_number);
         setEditModel(data.vehicle.make_model);
+        setEditCompanyId(data.vehicle.company_id || compList[0]?.id || '');
         setEditCompany((data.vehicle.company as ClientCompany) || 'Delhivery');
         setEditRouteLocation(data.vehicle.route_location || '');
         setEditType(data.vehicle.vehicle_type);
+        setEditInitialKm(String(data.vehicle.initial_km ?? data.vehicle.current_odometer));
         setEditOdo(String(data.vehicle.current_odometer));
+        setEditIsActive(data.vehicle.is_active !== false && data.vehicle.status !== 'inactive');
         setIncomeAmountInput(String(data.monthlyIncome || 50000));
       }
     } catch (err) {
@@ -116,7 +170,29 @@ export function VehicleDetailView({
 
   useEffect(() => {
     loadData();
+    const unsub = dataRepo.subscribe(loadData);
+    const interval = setInterval(loadData, 3000);
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, [effectiveQuery, selectedMonth]);
+
+  const handleOpenEditVehicle = () => {
+    if (report) {
+      setEditRegNo(report.vehicle.registration_number);
+      setEditModel(report.vehicle.make_model);
+      setEditCompanyId(report.vehicle.company_id || companies[0]?.id || '');
+      setEditCompany((report.vehicle.company as ClientCompany) || 'Delhivery');
+      setEditRouteLocation(report.vehicle.route_location || '');
+      setEditType(report.vehicle.vehicle_type);
+      setEditInitialKm(String(report.vehicle.initial_km ?? report.vehicle.current_odometer));
+      setEditOdo(String(report.vehicle.current_odometer));
+      setEditIsActive(report.vehicle.is_active !== false && report.vehicle.status !== 'inactive');
+      setVehicleEditError(null);
+      setIsEditVehicleOpen(true);
+    }
+  };
 
   const handleSaveVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,15 +200,20 @@ export function VehicleDetailView({
     setVehicleEditError(null);
     setIsSubmittingVehicle(true);
     try {
+      const selectedComp = companies.find((c) => c.id === editCompanyId);
       await dataRepo.updateVehicle(report.vehicle.id, {
         registration_number: editRegNo.trim().toUpperCase(),
         make_model: editModel.trim(),
-        company: editCompany,
+        company_id: editCompanyId || undefined,
+        company: selectedComp?.name || editCompany,
         route_location: editRouteLocation.trim() || undefined,
         vehicle_type: editType,
+        initial_km: parseFloat(editInitialKm) || undefined,
         current_odometer: parseFloat(editOdo) || report.vehicle.current_odometer,
+        is_active: editIsActive,
       });
       setIsEditVehicleOpen(false);
+      showSavedNotice('Vehicle details saved successfully!');
       await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
     } catch (err: unknown) {
@@ -144,8 +225,9 @@ export function VehicleDetailView({
 
   const handleArchiveVehicle = async () => {
     if (!report) return;
-    if (confirm(`Archive vehicle "${report.vehicle.registration_number}"? Vehicle will be marked inactive.`)) {
+    if (confirm(`Archive vehicle "${report.vehicle.registration_number}"? Past trips and expense history will be preserved.`)) {
       await dataRepo.archiveVehicle(report.vehicle.id);
+      showSavedNotice('Vehicle archived. Past trips preserved.');
       if (onVehicleUpdated) onVehicleUpdated();
       if (onBack) onBack();
     }
@@ -161,6 +243,7 @@ export function VehicleDetailView({
     try {
       await dataRepo.setVehicleMonthlyIncome(report.vehicle.id, selectedMonth, amount);
       setIsEditIncomeOpen(false);
+      showSavedNotice('Monthly income saved!');
       await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
     } catch (err) {
@@ -172,9 +255,10 @@ export function VehicleDetailView({
 
   const handleOpenAddExpense = () => {
     setEditingExpenseId(null);
+    setExpDriverId(drivers[0]?.id || 'drv-shameem');
     setExpType('Fuel');
     setExpAmount('');
-    setExpDate('2026-10-18');
+    setExpDate(`${selectedMonth}-18`);
     setExpLitres('');
     setExpNote('');
     setExpError(null);
@@ -183,6 +267,7 @@ export function VehicleDetailView({
 
   const handleOpenEditExpense = (exp: ExpenseWithDetails) => {
     setEditingExpenseId(exp.id);
+    setExpDriverId(exp.driver_id || drivers[0]?.id || '');
     setExpType(exp.expense_type);
     setExpAmount(String(exp.amount));
     setExpDate(exp.date);
@@ -211,17 +296,19 @@ export function VehicleDetailView({
           litres: expType === 'Fuel' ? parseFloat(expLitres) || null : null,
           note: expNote.trim() || null,
         });
+        showSavedNotice('Expense updated and saved!');
       } else {
-        const driverId = report.driversWhoDrove[0]?.driverId || report.vehicle.default_driver_ids?.[0] || 'drv-refnise';
         await dataRepo.createExpense({
           vehicle_id: report.vehicle.id,
-          driver_id: driverId,
+          driver_id: expDriverId || drivers[0]?.id || 'drv-shameem',
           expense_type: expType,
           amount: amt,
           date: expDate,
           litres: expType === 'Fuel' ? parseFloat(expLitres) || null : null,
           note: expNote.trim() || null,
+          isOwner: true,
         });
+        showSavedNotice('Expense logged on behalf of driver!');
       }
       setIsExpenseModalOpen(false);
       await loadData();
@@ -236,6 +323,141 @@ export function VehicleDetailView({
   const handleDeleteExpense = async (id: string) => {
     if (confirm('Delete this expense entry?')) {
       await dataRepo.deleteExpense(id);
+      showSavedNotice('Expense deleted successfully!');
+      await loadData();
+      if (onVehicleUpdated) onVehicleUpdated();
+    }
+  };
+
+  const handleDownloadExcel = async () => {
+    if (!report) return;
+    setIsDownloadingExcel(true);
+    try {
+      await triggerExcelDownload('vehicle', report, selectedMonth);
+      showSavedNotice('Excel file downloaded successfully!');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Failed to download Excel file');
+    } finally {
+      setIsDownloadingExcel(false);
+    }
+  };
+
+  // Trip Edit Handlers
+  const handleOpenEditTrip = (trip: VehicleTravelHistoryTrip) => {
+    setEditingTrip(trip);
+    setTripDriverId(trip.driverId || drivers[0]?.id || '');
+    setTripStartPlace(trip.startPlace || 'Calicut Hub');
+    setTripEndPlace(trip.endPlace || 'Kochi Terminal');
+    setTripStartOdo(trip.startOdometer !== null ? String(trip.startOdometer) : '');
+    setTripEndOdo(trip.endOdometer !== null ? String(trip.endOdometer) : '');
+    setTripStartTime(trip.startTime ? trip.startTime.slice(0, 16) : '');
+    setTripEndTime(trip.endTime ? trip.endTime.slice(0, 16) : '');
+    setTripNotes(trip.notes || '');
+    setTripError(null);
+  };
+
+  const handleSaveTripCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTrip) return;
+    const startNum = parseFloat(tripStartOdo);
+    const endNum = parseFloat(tripEndOdo);
+
+    if (isNaN(startNum) || startNum < 0) {
+      setTripError('Please enter a valid Start KM');
+      return;
+    }
+    if (isNaN(endNum) || endNum < startNum) {
+      setTripError('End KM must be greater than or equal to Start KM');
+      return;
+    }
+
+    setIsSubmittingTrip(true);
+    try {
+      await dataRepo.updateTrip(editingTrip.tripId, {
+        driver_id: tripDriverId || undefined,
+        start_place: tripStartPlace.trim() || undefined,
+        end_place: tripEndPlace.trim() || undefined,
+        start_odometer: startNum,
+        end_odometer: endNum,
+        start_time: tripStartTime || undefined,
+        end_time: tripEndTime || undefined,
+        driver_notes: tripNotes.trim() || null,
+      });
+      setEditingTrip(null);
+      showSavedNotice('Trip entry corrected and saved!');
+      await loadData();
+      if (onVehicleUpdated) onVehicleUpdated();
+    } catch (err: unknown) {
+      setTripError(err instanceof Error ? err.message : 'Failed to correct trip');
+    } finally {
+      setIsSubmittingTrip(false);
+    }
+  };
+
+  const handleOpenAddMissedTrip = () => {
+    setAddTripDriverId(drivers[0]?.id || '');
+    setAddTripStartPlace('Calicut Logistics Central');
+    setAddTripEndPlace('Kochi Terminal');
+    setAddTripDate(`${selectedMonth}-18`);
+    setAddTripStartTime('08:00');
+    setAddTripEndTime('18:00');
+    setAddTripStartKm(String(report?.vehicle.current_odometer || '12000'));
+    setAddTripEndKm(String((report?.vehicle.current_odometer || 12000) + 120));
+    setAddTripNotes('Manual entry by owner');
+    setAddTripError(null);
+    setIsAddTripOpen(true);
+  };
+
+  const handleSaveAddMissedTrip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!report) return;
+    if (!addTripDriverId) {
+      setAddTripError('Please select a driver');
+      return;
+    }
+    const startNum = parseFloat(addTripStartKm);
+    const endNum = parseFloat(addTripEndKm);
+
+    if (isNaN(startNum) || startNum < 0) {
+      setAddTripError('Please enter a valid Starting KM');
+      return;
+    }
+    if (isNaN(endNum) || endNum <= startNum) {
+      setAddTripError('Ending KM must be strictly greater than Starting KM');
+      return;
+    }
+
+    setIsSubmittingAddTrip(true);
+    try {
+      const startDateTime = `${addTripDate}T${addTripStartTime}:00`;
+      const endDateTime = `${addTripDate}T${addTripEndTime}:00`;
+
+      await dataRepo.addManualTrip({
+        driver_id: addTripDriverId,
+        vehicle_id: report.vehicle.id,
+        start_odometer: startNum,
+        end_odometer: endNum,
+        start_time: startDateTime,
+        end_time: endDateTime,
+        route_name: addTripStartPlace.trim(),
+        destination: addTripEndPlace.trim(),
+        driver_notes: addTripNotes.trim() || 'Added manually by owner',
+      });
+      setIsAddTripOpen(false);
+      showSavedNotice('Missed trip saved successfully!');
+      await loadData();
+      if (onVehicleUpdated) onVehicleUpdated();
+    } catch (err: unknown) {
+      setAddTripError(err instanceof Error ? err.message : 'Failed to add missed trip');
+    } finally {
+      setIsSubmittingAddTrip(false);
+    }
+  };
+
+  const handleDeleteTrip = async (tripId: string) => {
+    if (confirm('Delete this trip entry?')) {
+      await dataRepo.deleteTrip(tripId);
+      showSavedNotice('Trip deleted successfully!');
       await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
     }
@@ -283,16 +505,38 @@ export function VehicleDetailView({
           </select>
         </div>
 
-        {/* Edit Vehicle Header Action */}
-        <button
-          type="button"
-          onClick={() => setIsEditVehicleOpen(true)}
-          className="w-11 h-11 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center text-gray-800 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
-          aria-label="Edit vehicle"
-        >
-          <Pencil className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          {/* Download Excel Button */}
+          <button
+            type="button"
+            onClick={handleDownloadExcel}
+            disabled={isDownloadingExcel}
+            className="h-11 px-3 sm:px-3.5 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center gap-1.5 text-xs font-bold text-gray-800 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
+            title="Download Excel report for this month"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span className="hidden sm:inline">{isDownloadingExcel ? 'Exporting...' : 'Download Excel'}</span>
+          </button>
+
+          {/* Edit Vehicle Header Action */}
+          <button
+            type="button"
+            onClick={handleOpenEditVehicle}
+            className="w-11 h-11 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center text-gray-800 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
+            aria-label="Edit vehicle"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        </div>
       </div>
+
+      {/* Saved Notification Banner */}
+      {savedMessage && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-2 text-xs text-emerald-800 font-bold animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{savedMessage}</span>
+        </div>
+      )}
 
       {/* Full Vehicle Details Card */}
       <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-3">
@@ -317,14 +561,14 @@ export function VehicleDetailView({
           <div className="flex flex-col items-end gap-1">
             <span
               className={`px-3 py-1 rounded-full text-xs font-bold ${
-                vehicle.status === 'active'
+                vehicle.is_active !== false && vehicle.status === 'active'
                   ? 'bg-[#D4F65B] text-black'
                   : vehicle.status === 'maintenance'
                   ? 'bg-amber-100 text-amber-800'
                   : 'bg-gray-100 text-gray-500'
               }`}
             >
-              {vehicle.status === 'active'
+              {vehicle.is_active !== false && vehicle.status === 'active'
                 ? 'Active'
                 : vehicle.status === 'maintenance'
                 ? 'Maintenance'
@@ -477,7 +721,7 @@ export function VehicleDetailView({
         )}
       </div>
 
-      {/* Travel History for Selected Month */}
+      {/* Travel History for Selected Month (Trip List with Full Edit Control) */}
       <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -486,12 +730,18 @@ export function VehicleDetailView({
               <span>Travel History ({report.travelHistory?.length || 0})</span>
             </h2>
             <p className="text-[11px] text-gray-400">
-              Trip logs for {selectedMonth} with GPS locations
+              Trip logs for {selectedMonth} • Edit or add missed trips
             </p>
           </div>
-          <span className="text-xs font-bold text-gray-500 font-mono">
-            {report.totalMonthKm} km total
-          </span>
+
+          <button
+            type="button"
+            onClick={handleOpenAddMissedTrip}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#121316] text-white text-xs font-bold hover:bg-black transition-colors cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5 text-[#D4F65B]" />
+            <span>Add Missed Trip</span>
+          </button>
         </div>
 
         {(!report.travelHistory || report.travelHistory.length === 0) ? (
@@ -505,9 +755,9 @@ export function VehicleDetailView({
                 key={trip.tripId}
                 className="p-4 rounded-2xl bg-[#F8F9FA] border border-gray-100 space-y-2.5"
               >
-                {/* Header row: Date, Driver, Status, View on map button */}
+                {/* Header row: Date, Driver, Status, Actions */}
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-bold text-gray-800 bg-white px-2.5 py-1 rounded-full border border-gray-200">
                       {trip.dutyDate}
                     </span>
@@ -519,22 +769,45 @@ export function VehicleDetailView({
                         Live
                       </span>
                     )}
+                    {trip.edited_by_owner_at && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        edited by owner • {new Date(trip.edited_by_owner_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedMapTrip({
-                        ...trip,
-                        vehicleRegistration: vehicle.registration_number,
-                      });
-                      setIsMapOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#121316] text-[#D4F65B] hover:bg-black text-xs font-bold transition-all active:scale-95 cursor-pointer shadow-2xs"
-                  >
-                    <MapPin className="w-3 h-3" />
-                    <span>View on map</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedMapTrip({
+                          ...trip,
+                          vehicleRegistration: vehicle.registration_number,
+                        });
+                        setIsMapOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      <MapPin className="w-3 h-3 text-[#121316]" />
+                      <span>View on map</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEditTrip(trip)}
+                      className="p-1.5 rounded-xl text-gray-500 hover:text-black hover:bg-white transition-colors cursor-pointer"
+                      title="Edit trip"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTrip(trip.tripId)}
+                      className="p-1.5 rounded-xl text-gray-400 hover:text-rose-600 hover:bg-white transition-colors cursor-pointer"
+                      title="Delete trip"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Start and End Locations */}
@@ -580,13 +853,19 @@ export function VehicleDetailView({
                     </span>
                   </div>
                 </div>
+
+                {trip.notes && (
+                  <p className="text-[11px] text-gray-500 italic bg-white p-2 rounded-xl">
+                    &quot;{trip.notes}&quot;
+                  </p>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Expense List with date, driver, type, amount, note + correction */}
+      {/* Expense List with date, driver, type, amount, note + edit & delete */}
       <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -597,14 +876,26 @@ export function VehicleDetailView({
               Live updates entered by drivers & owner
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleOpenAddExpense}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#121316] text-white text-xs font-bold hover:bg-black transition-colors cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5 text-[#D4F65B]" />
-            <span>Add Expense</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleDownloadExcel}
+              disabled={isDownloadingExcel}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-gray-200 text-[#121316] text-xs font-bold hover:bg-gray-50 transition-colors cursor-pointer shadow-2xs"
+              title="Download Excel (.xlsx) for this month"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{isDownloadingExcel ? 'Downloading...' : 'Download Excel'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenAddExpense}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#121316] text-white text-xs font-bold hover:bg-black transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-[#D4F65B]" />
+              <span>Add Expense</span>
+            </button>
+          </div>
         </div>
 
         {expenses.entries.length === 0 ? (
@@ -637,6 +928,11 @@ export function VehicleDetailView({
                     {entry.driver && (
                       <span className="text-xs text-gray-600 font-medium">
                         by {entry.driver.full_name}
+                      </span>
+                    )}
+                    {entry.edited_by_owner_at && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        edited by owner • {new Date(entry.edited_by_owner_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     )}
                   </div>
@@ -700,10 +996,10 @@ export function VehicleDetailView({
             </div>
 
             <p className="text-xs text-gray-500">
-              Contract or rental income for {vehicle.registration_number} ({selectedMonth})
+              Contract revenue/rent earned by <strong>{vehicle.registration_number}</strong> for {selectedMonth}.
             </p>
 
-            <form onSubmit={handleSaveIncome} className="space-y-4">
+            <form onSubmit={handleSaveIncome} className="space-y-3">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-700 uppercase">
                   Monthly Income (₹)
@@ -713,9 +1009,8 @@ export function VehicleDetailView({
                   step="100"
                   value={incomeAmountInput}
                   onChange={(e) => setIncomeAmountInput(e.target.value)}
-                  className="w-full h-12 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-base font-bold text-[#121316] focus:outline-none focus:border-gray-400"
+                  className="w-full h-12 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-base font-black text-[#121316] focus:outline-none focus:border-gray-400"
                   required
-                  autoFocus
                 />
               </div>
 
@@ -732,7 +1027,7 @@ export function VehicleDetailView({
                   disabled={isSubmittingIncome}
                   className="flex-1 h-11 rounded-xl bg-[#121316] text-white font-bold text-xs hover:bg-black cursor-pointer"
                 >
-                  {isSubmittingIncome ? 'Saving...' : 'Update Income'}
+                  {isSubmittingIncome ? 'Saving...' : 'Save Income'}
                 </button>
               </div>
             </form>
@@ -740,7 +1035,7 @@ export function VehicleDetailView({
         </div>
       )}
 
-      {/* Edit Vehicle Details Modal */}
+      {/* Edit Vehicle Details Modal (Number, Type, Company, Initial KM, Active/Inactive) */}
       {isEditVehicleOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto animate-in fade-in duration-150">
@@ -791,18 +1086,68 @@ export function VehicleDetailView({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-700 uppercase">
-                  Client Company
-                </label>
-                <select
-                  value={editCompany}
-                  onChange={(e) => setEditCompany(e.target.value as ClientCompany)}
-                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
-                >
-                  <option value="Delhivery">Delhivery</option>
-                  <option value="Shadowfax">Shadowfax</option>
-                </select>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Vehicle Type
+                  </label>
+                  <select
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value as VehicleType)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                  >
+                    <option value="truck">Truck</option>
+                    <option value="van">Van</option>
+                    <option value="trailer">Trailer</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Client Company
+                  </label>
+                  <select
+                    value={editCompanyId}
+                    onChange={(e) => setEditCompanyId(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                  >
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Initial KM
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={editInitialKm}
+                    onChange={(e) => setEditInitialKm(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Current Odo (KM)
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    value={editOdo}
+                    onChange={(e) => setEditOdo(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
@@ -817,17 +1162,28 @@ export function VehicleDetailView({
                 />
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-gray-700 uppercase">
-                  Current Odometer (KM)
+              <div className="space-y-1 pt-1">
+                <label className="text-xs font-bold text-gray-700 uppercase block">
+                  Status
                 </label>
-                <input
-                  type="number"
-                  value={editOdo}
-                  onChange={(e) => setEditOdo(e.target.value)}
-                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-mono text-[#121316] focus:outline-none focus:border-gray-400"
-                  required
-                />
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold">
+                    <input
+                      type="radio"
+                      checked={editIsActive}
+                      onChange={() => setEditIsActive(true)}
+                    />
+                    <span>Active</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-500">
+                    <input
+                      type="radio"
+                      checked={!editIsActive}
+                      onChange={() => setEditIsActive(false)}
+                    />
+                    <span>Inactive</span>
+                  </label>
+                </div>
               </div>
 
               <div className="pt-2 flex items-center gap-2">
@@ -851,7 +1207,7 @@ export function VehicleDetailView({
         </div>
       )}
 
-      {/* Add / Correct Expense Modal */}
+      {/* Add / Correct Expense Modal (with Driver Selection) */}
       {isExpenseModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150">
@@ -876,6 +1232,26 @@ export function VehicleDetailView({
             )}
 
             <form onSubmit={handleSaveExpense} className="space-y-3">
+              {!editingExpenseId && (
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    On Behalf of Driver
+                  </label>
+                  <select
+                    value={expDriverId}
+                    onChange={(e) => setExpDriverId(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 cursor-pointer"
+                    required
+                  >
+                    {drivers.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.full_name} ({d.phone})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-700 uppercase">
                   Expense Type
@@ -937,13 +1313,13 @@ export function VehicleDetailView({
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-700 uppercase">
-                  Notes
+                  Note
                 </label>
                 <input
                   type="text"
                   value={expNote}
                   onChange={(e) => setExpNote(e.target.value)}
-                  placeholder="e.g. HP Petrol Pump / Tyre repair"
+                  placeholder="Optional expense note"
                   className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm text-[#121316] focus:outline-none focus:border-gray-400"
                 />
               </div>
@@ -961,7 +1337,7 @@ export function VehicleDetailView({
                   disabled={isSubmittingExp}
                   className="flex-1 h-11 rounded-xl bg-[#121316] text-white font-bold text-xs hover:bg-black cursor-pointer"
                 >
-                  {isSubmittingExp ? 'Saving...' : editingExpenseId ? 'Update' : 'Add'}
+                  {isSubmittingExp ? 'Saving...' : 'Save Expense'}
                 </button>
               </div>
             </form>
@@ -969,12 +1345,351 @@ export function VehicleDetailView({
         </div>
       )}
 
-      {/* Trip Map Modal (OpenStreetMap Leaflet) */}
-      <TripMapModal
-        isOpen={isMapOpen}
-        onClose={() => setIsMapOpen(false)}
-        tripInfo={selectedMapTrip}
-      />
+      {/* Edit Trip Modal (Owner Full Control: Driver, Route, KM, Time, Notes) */}
+      {editingTrip && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 max-h-[90vh] overflow-y-auto animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-[#121316]">
+                Edit Trip Entry
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingTrip(null)}
+                className="p-1 rounded-full text-gray-400 hover:text-black cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {tripError && (
+              <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{tripError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveTripCorrection} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Driver
+                </label>
+                <select
+                  value={tripDriverId}
+                  onChange={(e) => setTripDriverId(e.target.value)}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 cursor-pointer"
+                >
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.full_name} ({d.phone})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start Place
+                  </label>
+                  <input
+                    type="text"
+                    value={tripStartPlace}
+                    onChange={(e) => setTripStartPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    placeholder="Origin"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End Place
+                  </label>
+                  <input
+                    type="text"
+                    value={tripEndPlace}
+                    onChange={(e) => setTripEndPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    placeholder="Destination"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start KM
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={tripStartOdo}
+                    onChange={(e) => setTripStartOdo(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End KM
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={tripEndOdo}
+                    onChange={(e) => setTripEndOdo(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start Time
+                  </label>
+                  <input
+                    type="text"
+                    value={tripStartTime}
+                    onChange={(e) => setTripStartTime(e.target.value)}
+                    placeholder="YYYY-MM-DDTHH:MM"
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End Time
+                  </label>
+                  <input
+                    type="text"
+                    value={tripEndTime}
+                    onChange={(e) => setTripEndTime(e.target.value)}
+                    placeholder="YYYY-MM-DDTHH:MM"
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={tripNotes}
+                  onChange={(e) => setTripNotes(e.target.value)}
+                  placeholder="Optional trip notes"
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm text-[#121316] focus:outline-none focus:border-gray-400"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTrip(null)}
+                  className="flex-1 h-11 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingTrip}
+                  className="flex-1 h-11 rounded-xl bg-[#121316] text-white font-bold text-xs hover:bg-black cursor-pointer"
+                >
+                  {isSubmittingTrip ? 'Saving...' : 'Save Correction'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Add Missed Trip Modal */}
+      {isAddTripOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-[#121316]">
+                Add Missed Trip Manually
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAddTripOpen(false)}
+                className="p-1 rounded-full text-gray-400 hover:text-black cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-500">
+              Add a past trip for <strong>{vehicle.registration_number}</strong>.
+            </p>
+
+            {addTripError && (
+              <div className="p-3 bg-rose-50 text-rose-700 text-xs rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{addTripError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveAddMissedTrip} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Driver
+                </label>
+                <select
+                  value={addTripDriverId}
+                  onChange={(e) => setAddTripDriverId(e.target.value)}
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 cursor-pointer"
+                  required
+                >
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.full_name} ({d.phone})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start Place
+                  </label>
+                  <input
+                    type="text"
+                    value={addTripStartPlace}
+                    onChange={(e) => setAddTripStartPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End Place
+                  </label>
+                  <input
+                    type="text"
+                    value={addTripEndPlace}
+                    onChange={(e) => setAddTripEndPlace(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Date
+                  </label>
+                  <input
+                    type="date"
+                    value={addTripDate}
+                    onChange={(e) => setAddTripDate(e.target.value)}
+                    className="w-full h-11 px-2 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start
+                  </label>
+                  <input
+                    type="time"
+                    value={addTripStartTime}
+                    onChange={(e) => setAddTripStartTime(e.target.value)}
+                    className="w-full h-11 px-2 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End
+                  </label>
+                  <input
+                    type="time"
+                    value={addTripEndTime}
+                    onChange={(e) => setAddTripEndTime(e.target.value)}
+                    className="w-full h-11 px-2 bg-[#F8F9FA] border border-gray-200 rounded-xl text-xs font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Start KM
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={addTripStartKm}
+                    onChange={(e) => setAddTripStartKm(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    End KM
+                  </label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={addTripEndKm}
+                    onChange={(e) => setAddTripEndKm(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-700 uppercase">
+                  Notes
+                </label>
+                <input
+                  type="text"
+                  value={addTripNotes}
+                  onChange={(e) => setAddTripNotes(e.target.value)}
+                  placeholder="Optional trip notes"
+                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm text-[#121316] focus:outline-none focus:border-gray-400"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAddTripOpen(false)}
+                  className="flex-1 h-11 rounded-xl bg-gray-100 text-gray-700 font-bold text-xs hover:bg-gray-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAddTrip}
+                  className="flex-1 h-11 rounded-xl bg-[#121316] text-white font-bold text-xs hover:bg-black cursor-pointer"
+                >
+                  {isSubmittingAddTrip ? 'Saving...' : 'Add Trip'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Map Modal */}
+      {isMapOpen && selectedMapTrip && (
+        <TripMapModal
+          isOpen={isMapOpen}
+          onClose={() => setIsMapOpen(false)}
+          tripInfo={selectedMapTrip}
+        />
+      )}
     </div>
   );
 }

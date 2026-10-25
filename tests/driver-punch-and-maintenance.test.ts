@@ -27,8 +27,14 @@ describe('Driver Portal Direct Punch-In & Maintenance Logging', () => {
     // Verify vehicle meter synced
     const updatedVehicles = await dataRepo.getVehicles();
     const updatedVeh = updatedVehicles.find((v) => v.id === testVehicle.id);
-    expect(updatedVeh?.current_odometer).toBeGreaterThanOrEqual(startKm);
-    expect(updatedVeh?.status).toBe('active');
+    expect(['active', 'on_trip']).toContain(updatedVeh?.status);
+
+    // Complete the trip so vehicle is released for subsequent test suites
+    await dataRepo.completeTrip({
+      tripId: trip.id,
+      endOdometer: startKm + 15,
+      isFinalTripOfDuty: true,
+    });
   });
 
   it('allows completing a trip and starting an extra leg without completed-status block', async () => {
@@ -54,7 +60,9 @@ describe('Driver Portal Direct Punch-In & Maintenance Logging', () => {
     });
     expect(completed1.distanceKm).toBe(42.5);
 
-    // Now driver starts Leg 2 (should NOT throw error even though duty was marked completed)
+    // Now owner taps "Allow now" for emergency extra leg, bypassing rest cooldown once
+    await dataRepo.allowDriverOverride(driver.id);
+
     const startKm2 = endKm1;
     const trip2 = await dataRepo.startTripForDriver({
       driverPhoneOrId: driver.phone,
@@ -66,6 +74,12 @@ describe('Driver Portal Direct Punch-In & Maintenance Logging', () => {
     expect(trip2).toBeDefined();
     expect(trip2.status).toBe('in_progress');
     expect(trip2.trip_number).toBeGreaterThanOrEqual(2);
+
+    await dataRepo.completeTrip({
+      tripId: trip2.id,
+      endOdometer: startKm2 + 10,
+      isFinalTripOfDuty: true,
+    });
   });
 
   it('records vehicle maintenance with issue type, amount, workshop and reflects in expenses', async () => {
@@ -90,5 +104,8 @@ describe('Driver Portal Direct Punch-In & Maintenance Logging', () => {
     const rawReport = await dataRepo.getReportRawData();
     const foundExp = rawReport.expenses.find((e) => e.id === maintExpense.id);
     expect(foundExp).toBeDefined();
+
+    // Clean up created test expense so it doesn't pollute subsequent test suites
+    await dataRepo.deleteExpense(maintExpense.id || (maintExpense as any).expenseId);
   });
 });

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Alert } from '@/components/ui/Alert';
 import { dataRepo } from '@/lib/data-service';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
-import { UserCheck, Phone, CheckCircle2 } from 'lucide-react';
+import { UserCheck, Phone, CheckCircle2, KeyRound } from 'lucide-react';
 
 interface SimpleAddDriverModalProps {
   isOpen: boolean;
@@ -23,6 +23,7 @@ export function SimpleAddDriverModal({
   const { t } = useLanguage();
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [pin, setPin] = useState('1234');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -53,10 +54,12 @@ export function SimpleAddDriverModal({
       await dataRepo.createDriver({
         full_name: name,
         phone: mobile,
+        pin: pin.trim() || '1234',
       });
 
       setFullName('');
       setPhone('');
+      setPin('1234');
       onSuccess();
       onClose();
     } catch (err: unknown) {
@@ -104,6 +107,24 @@ export function SimpleAddDriverModal({
           />
           <p className="text-[11px] text-slate-500 mt-1">
             {t('mobileHelpText')}
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider mb-1.5">
+            4-Digit PIN <span className="text-rose-500">*</span>
+          </label>
+          <Input
+            type="password"
+            maxLength={6}
+            placeholder="1234"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+            leftIcon={<KeyRound className="w-4 h-4 text-slate-400" />}
+            required
+          />
+          <p className="text-[11px] text-slate-500 mt-1">
+            Driver uses this PIN to log in on their phone (Default: 1234)
           </p>
         </div>
 

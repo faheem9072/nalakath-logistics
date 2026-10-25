@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Building2,
   Radio,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface VehicleWithStatus extends Vehicle {
@@ -53,9 +54,17 @@ export function VehiclesListView() {
   const [editCompany, setEditCompany] = useState<ClientCompany>('Delhivery');
   const [editRouteLocation, setEditRouteLocation] = useState('');
   const [editType, setEditType] = useState<VehicleType>('truck');
+  const [editInitialKm, setEditInitialKm] = useState('');
   const [editOdo, setEditOdo] = useState('');
+  const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
+
+  const showSavedNotice = (msg: string) => {
+    setSavedNotice(msg);
+    setTimeout(() => setSavedNotice(null), 3500);
+  };
 
   const loadVehicles = async () => {
     try {
@@ -89,8 +98,12 @@ export function VehiclesListView() {
 
   useEffect(() => {
     loadVehicles();
-    const interval = setInterval(loadVehicles, 4000);
-    return () => clearInterval(interval);
+    const unsub = dataRepo.subscribe(loadVehicles);
+    const interval = setInterval(loadVehicles, 3000);
+    return () => {
+      unsub();
+      clearInterval(interval);
+    };
   }, []);
 
   const handleAddVehicle = async (e: React.FormEvent) => {
@@ -110,6 +123,7 @@ export function VehiclesListView() {
         route_location: routeLocation.trim() || undefined,
         vehicle_type: vehicleType,
         capacity: 2,
+        initial_km: parseFloat(odometer) || 0,
         current_odometer: parseFloat(odometer) || 0,
         status: 'active',
         notes: null,
@@ -119,6 +133,7 @@ export function VehiclesListView() {
       setMakeModel('');
       setRouteLocation('');
       setOdometer('0');
+      showSavedNotice('New vehicle added successfully!');
       await loadVehicles();
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : 'Failed to add vehicle');
@@ -135,7 +150,9 @@ export function VehiclesListView() {
     setEditCompany((v.company as ClientCompany) || 'Delhivery');
     setEditRouteLocation(v.route_location || '');
     setEditType(v.vehicle_type);
+    setEditInitialKm(String(v.initial_km ?? v.current_odometer));
     setEditOdo(String(v.current_odometer));
+    setEditIsActive(v.is_active !== false && v.status !== 'inactive');
     setEditError(null);
   };
 
@@ -151,9 +168,12 @@ export function VehiclesListView() {
         company: editCompany,
         route_location: editRouteLocation.trim() || undefined,
         vehicle_type: editType,
+        initial_km: parseFloat(editInitialKm) || undefined,
         current_odometer: parseFloat(editOdo) || editingVehicle.current_odometer,
+        is_active: editIsActive,
       });
       setEditingVehicle(null);
+      showSavedNotice('Vehicle details saved!');
       await loadVehicles();
     } catch (err: unknown) {
       setEditError(err instanceof Error ? err.message : 'Failed to update vehicle');
@@ -164,8 +184,9 @@ export function VehiclesListView() {
 
   const handleArchiveVehicle = async (vehicleId: string, reg: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Archive vehicle "${reg}"? Vehicle will be marked inactive.`)) {
+    if (confirm(`Archive vehicle "${reg}"? Past trips and history will be preserved.`)) {
       await dataRepo.archiveVehicle(vehicleId);
+      showSavedNotice('Vehicle marked inactive. Past trips preserved.');
       await loadVehicles();
     }
   };
@@ -211,6 +232,13 @@ export function VehiclesListView() {
         placeholder="Search vehicle number or route..."
         onPlusClick={() => setIsAddVehicleOpen(true)}
       />
+
+      {savedNotice && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-2xl flex items-center gap-2 animate-in fade-in">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{savedNotice}</span>
+        </div>
+      )}
 
       {/* Hero Lime Card: "Vehicle on the road" (Exact MoveIQ look) */}
       <MoveIQLimeHeroCard
@@ -546,17 +574,58 @@ export function VehiclesListView() {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Initial KM
+                  </label>
+                  <input
+                    type="number"
+                    value={editInitialKm}
+                    onChange={(e) => setEditInitialKm(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase">
+                    Odometer (KM)
+                  </label>
+                  <input
+                    type="number"
+                    value={editOdo}
+                    onChange={(e) => setEditOdo(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-mono text-[#121316] focus:outline-none focus:border-gray-400"
+                    required
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-bold text-gray-700 uppercase">
-                  Odometer (KM)
+                  Status
                 </label>
-                <input
-                  type="number"
-                  value={editOdo}
-                  onChange={(e) => setEditOdo(e.target.value)}
-                  className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm font-mono text-[#121316] focus:outline-none focus:border-gray-400"
-                  required
-                />
+                <div className="flex items-center gap-4 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700">
+                    <input
+                      type="radio"
+                      name="vehicle_status"
+                      checked={editIsActive}
+                      onChange={() => setEditIsActive(true)}
+                      className="accent-[#121316]"
+                    />
+                    <span>Active</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700">
+                    <input
+                      type="radio"
+                      name="vehicle_status"
+                      checked={!editIsActive}
+                      onChange={() => setEditIsActive(false)}
+                      className="accent-[#121316]"
+                    />
+                    <span>Inactive</span>
+                  </label>
+                </div>
               </div>
 
               <div className="pt-2 flex items-center gap-2">

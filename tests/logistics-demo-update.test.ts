@@ -146,7 +146,7 @@ describe('Nalakath Logistics Demo Updates', () => {
       (d) => d.full_name === 'Firoz'
     )!;
 
-    await dataRepo.createExpense({
+    const createdExp = await dataRepo.createExpense({
       vehicle_id: v3443.id,
       driver_id: firozDriver.id,
       expense_type: 'Toll',
@@ -162,6 +162,9 @@ describe('Nalakath Logistics Demo Updates', () => {
     for (const exp of ashinExpenses) {
       expect(exp.driver?.phone).toBe('+919400778899');
     }
+
+    // Clean up created expense so it does not affect other tests
+    await dataRepo.deleteExpense(createdExp.id);
   });
 
   it('6. COMPANY FILTER: getReportRawData filters by Delhivery and Shadowfax', async () => {
