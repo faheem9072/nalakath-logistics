@@ -85,47 +85,33 @@ export async function captureCurrentLocation(): Promise<TripLocation | null> {
   }
 
   return new Promise((resolve) => {
-    // Give user up to 6 seconds to respond or acquire GPS lock
+    // Ultra-fast 800ms timeout so the driver never experiences lag
     const timeoutTimer = setTimeout(() => {
       resolve(null);
-    }, 6000);
+    }, 800);
 
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         clearTimeout(timeoutTimer);
         const { latitude, longitude } = pos.coords;
-        try {
-          const address = await reverseGeocode(latitude, longitude);
-          const readableName = address || `GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-          resolve({
-            latitude,
-            longitude,
-            address: readableName,
-            place_name: readableName,
-            accuracy: pos.coords.accuracy || null,
-            captured_at: new Date().toISOString(),
-          });
-        } catch {
-          const fallbackName = `GPS (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-          resolve({
-            latitude,
-            longitude,
-            address: fallbackName,
-            place_name: fallbackName,
-            accuracy: pos.coords.accuracy || null,
-            captured_at: new Date().toISOString(),
-          });
-        }
+        const fallbackName = `GPS (${latitude.toFixed(3)}, ${longitude.toFixed(3)})`;
+        resolve({
+          latitude,
+          longitude,
+          address: fallbackName,
+          place_name: fallbackName,
+          accuracy: pos.coords.accuracy || null,
+          captured_at: new Date().toISOString(),
+        });
       },
-      (error) => {
+      () => {
         clearTimeout(timeoutTimer);
-        console.warn('Geolocation capture skipped or denied:', error.message);
         resolve(null);
       },
       {
-        enableHighAccuracy: true,
-        timeout: 5000,
-        maximumAge: 60000,
+        enableHighAccuracy: false, // Low accuracy is instantaneous (cell/wifi)
+        timeout: 750,
+        maximumAge: 300000, // 5 min cache
       }
     );
   });

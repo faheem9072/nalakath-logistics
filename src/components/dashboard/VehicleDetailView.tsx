@@ -179,11 +179,9 @@ export function VehicleDetailView({
   useEffect(() => {
     loadData();
     const unsubRepo = dataRepo.subscribe(loadData);
-    const interval = setInterval(loadData, 4000);
 
     return () => {
       unsubRepo();
-      clearInterval(interval);
     };
   }, [effectiveQuery, selectedMonth, vehicleId]);
 

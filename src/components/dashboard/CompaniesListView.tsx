@@ -116,15 +116,8 @@ export function CompaniesListView() {
         loadCompanyDetail(selectedCompanyId, selectedMonth);
       }
     });
-    const interval = setInterval(() => {
-      loadCompanies();
-      if (selectedCompanyId) {
-        loadCompanyDetail(selectedCompanyId, selectedMonth);
-      }
-    }, 4000);
     return () => {
       unsub();
-      clearInterval(interval);
     };
   }, [selectedCompanyId, selectedMonth]);
 

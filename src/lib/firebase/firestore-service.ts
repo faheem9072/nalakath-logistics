@@ -21,7 +21,38 @@ function requireDb() {
   return db;
 }
 
-export async function fetchFleetStateFromFirestore(): Promise<FleetState> {
+export function cleanDocData<T extends Record<string, any>>(obj: T): Record<string, any> {
+  const cleaned: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val === undefined) {
+      cleaned[key] = null;
+    } else if (val !== null && typeof val === 'object' && !Array.isArray(val) && !(val instanceof Date)) {
+      cleaned[key] = cleanDocData(val);
+    } else {
+      cleaned[key] = val;
+    }
+  }
+  return cleaned;
+}
+
+export async function safeSetDoc(ref: any, data: any, options?: any) {
+  const cleaned = cleanDocData(data);
+  return options ? setDoc(ref, cleaned, options) : setDoc(ref, cleaned);
+}
+
+let cachedFleetState: FleetState | null = null;
+let lastCacheTime = 0;
+const CACHE_TTL_MS = 2500; // 2.5s cache to eliminate heavy Firestore read storms
+
+export function invalidateFleetCache() {
+  cachedFleetState = null;
+  lastCacheTime = 0;
+}
+
+export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<FleetState> {
+  if (!forceFresh && cachedFleetState && Date.now() - lastCacheTime < CACHE_TTL_MS) {
+    return cachedFleetState;
+  }
   const firestore = requireDb();
 
   const [
@@ -235,7 +266,7 @@ export async function fetchFleetStateFromFirestore(): Promise<FleetState> {
     };
   });
 
-  return {
+  const finalState: FleetState = {
     drivers: enhancedDrivers,
     vehicles: enhancedVehicles,
     companies,
@@ -249,6 +280,10 @@ export async function fetchFleetStateFromFirestore(): Promise<FleetState> {
     settings,
     lastUpdated: new Date().toISOString(),
   };
+
+  cachedFleetState = finalState;
+  lastCacheTime = Date.now();
+  return finalState;
 }
 
 // -----------------------------------------------------------------------------
@@ -283,7 +318,8 @@ export async function createDriverInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(doc(firestore, 'drivers', id), newDriver);
+  await safeSetDoc(doc(firestore, 'drivers', id), newDriver);
+  invalidateFleetCache();
   return newDriver;
 }
 
@@ -314,7 +350,8 @@ export async function updateDriverInFirestore(
   if (data.isActive !== undefined) updatedData.is_active = Boolean(data.isActive);
   if (data.allow_next_trip_override !== undefined) updatedData.allow_next_trip_override = Number(data.allow_next_trip_override);
 
-  await setDoc(driverRef, updatedData, { merge: true });
+  await safeSetDoc(driverRef, updatedData, { merge: true });
+  invalidateFleetCache();
 
   const finalSnap = await getDoc(driverRef);
   return { id, ...(finalSnap.data() as any) } as Driver;
@@ -361,6 +398,8 @@ export async function deleteDriverInFirestore(
   expSnap.docs.forEach((d) => batch.delete(d.ref));
   batch.delete(driverRef);
   await batch.commit();
+
+  invalidateFleetCache();
 
   return {
     success: true,
@@ -412,7 +451,8 @@ export async function createVehicleInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(doc(firestore, 'vehicles', id), newVehicle);
+  await safeSetDoc(doc(firestore, 'vehicles', id), newVehicle);
+  invalidateFleetCache();
   return newVehicle;
 }
 
@@ -455,7 +495,8 @@ export async function updateVehicleInFirestore(
   if (data.is_active !== undefined) updatedData.is_active = Boolean(data.is_active);
   if (data.isActive !== undefined) updatedData.is_active = Boolean(data.isActive);
 
-  await setDoc(vehRef, updatedData, { merge: true });
+  await safeSetDoc(vehRef, updatedData, { merge: true });
+  invalidateFleetCache();
 
   const finalSnap = await getDoc(vehRef);
   return { id, ...(finalSnap.data() as any) } as Vehicle;
@@ -498,6 +539,8 @@ export async function deleteVehicleInFirestore(
   batch.delete(vehRef);
   await batch.commit();
 
+  invalidateFleetCache();
+
   return {
     success: true,
     deletedRows: 1,
@@ -530,7 +573,8 @@ export async function createCompanyInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(doc(firestore, 'companies', id), newCompany);
+  await safeSetDoc(doc(firestore, 'companies', id), newCompany);
+  invalidateFleetCache();
   return newCompany;
 }
 
@@ -559,7 +603,8 @@ export async function updateCompanyInFirestore(
   }
   if (data.is_active !== undefined) updatedData.is_active = Boolean(data.is_active);
 
-  await setDoc(compRef, updatedData, { merge: true });
+  await safeSetDoc(compRef, updatedData, { merge: true });
+  invalidateFleetCache();
 
   const finalSnap = await getDoc(compRef);
   return { id, ...(finalSnap.data() as any) } as Company;
@@ -611,6 +656,8 @@ export async function deleteCompanyInFirestore(
 
   batch.delete(compRef);
   await batch.commit();
+
+  invalidateFleetCache();
 
   return {
     success: true,
@@ -747,7 +794,7 @@ export async function startTripInFirestore(data: {
 
   const newTrip: Trip = {
     id: tripId,
-    assignment_id: data.assignmentId,
+    assignment_id: (data.assignmentId || null) as any,
     trip_number: 1,
     status: 'in_progress',
     driver_id: dId,
@@ -766,15 +813,19 @@ export async function startTripInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(doc(firestore, 'trips', tripId), newTrip);
+  await safeSetDoc(doc(firestore, 'trips', tripId), {
+    ...newTrip,
+    assignment_id: data.assignmentId || null,
+  });
 
   // Update vehicle current odometer
-  await setDoc(
+  await safeSetDoc(
     doc(firestore, 'vehicles', vId),
     { current_odometer: Number(startingKm), updated_at: now },
     { merge: true }
   );
 
+  invalidateFleetCache();
   return newTrip;
 }
 
@@ -815,11 +866,11 @@ export async function endTripInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(tripRef, updateData, { merge: true });
+  await safeSetDoc(tripRef, updateData, { merge: true });
 
   // Update vehicle odometer
   if (trip.vehicle_id) {
-    await setDoc(
+    await safeSetDoc(
       doc(firestore, 'vehicles', trip.vehicle_id),
       { current_odometer: Number(data.endOdometer), updated_at: now },
       { merge: true }
@@ -831,7 +882,7 @@ export async function endTripInFirestore(data: {
     for (const exp of data.expenses) {
       if (!exp.amount || exp.amount <= 0) continue;
       const expId = `exp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      await setDoc(doc(firestore, 'expenses', expId), {
+      await safeSetDoc(doc(firestore, 'expenses', expId), {
         id: expId,
         trip_id: data.tripId,
         vehicle_id: trip.vehicle_id,
@@ -847,13 +898,15 @@ export async function endTripInFirestore(data: {
     }
   }
 
+  invalidateFleetCache();
+
   const finalSnap = await getDoc(tripRef);
   return { trip: { id: data.tripId, ...(finalSnap.data() as any) } as Trip, distanceKm };
 }
 
 export async function allowDriverOverrideInFirestore(driverId: string, enabled: boolean): Promise<void> {
   const firestore = requireDb();
-  await setDoc(
+  await safeSetDoc(
     doc(firestore, 'drivers', driverId),
     {
       allow_next_trip_override: enabled ? 1 : 0,
@@ -861,11 +914,12 @@ export async function allowDriverOverrideInFirestore(driverId: string, enabled: 
     },
     { merge: true }
   );
+  invalidateFleetCache();
 }
 
 export async function updateSettingInFirestore(key: string, value: any): Promise<void> {
   const firestore = requireDb();
-  await setDoc(
+  await safeSetDoc(
     doc(firestore, 'settings', 'fleet_settings'),
     {
       [key]: value,
@@ -873,6 +927,7 @@ export async function updateSettingInFirestore(key: string, value: any): Promise
     },
     { merge: true }
   );
+  invalidateFleetCache();
 }
 
 export async function recordMaintenanceInFirestore(data: {
@@ -901,16 +956,17 @@ export async function recordMaintenanceInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(doc(firestore, 'expenses', expId), expense);
+  await safeSetDoc(doc(firestore, 'expenses', expId), expense);
 
   if (data.odometer && data.odometer > 0) {
-    await setDoc(
+    await safeSetDoc(
       doc(firestore, 'vehicles', data.vehicleId),
       { current_odometer: Number(data.odometer), updated_at: now },
       { merge: true }
     );
   }
 
+  invalidateFleetCache();
   return { success: true, expense };
 }
 
@@ -935,6 +991,7 @@ export async function addManualTripInFirestore(data: {
 
   const newTrip: Trip = {
     id: tripId,
+    assignment_id: null as any,
     trip_number: 1,
     status: 'completed',
     driver_id: data.driverId,
@@ -952,7 +1009,7 @@ export async function addManualTripInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(doc(firestore, 'trips', tripId), newTrip);
+  await safeSetDoc(doc(firestore, 'trips', tripId), newTrip);
 
   // Update vehicle's current odometer in Firestore
   const vehRef = doc(firestore, 'vehicles', data.vehicleId);
@@ -960,10 +1017,11 @@ export async function addManualTripInFirestore(data: {
   if (vehSnap.exists()) {
     const cur = vehSnap.data().current_odometer || 0;
     if (data.endOdometer > cur) {
-      await setDoc(vehRef, { current_odometer: data.endOdometer, updated_at: now }, { merge: true });
+      await safeSetDoc(vehRef, { current_odometer: data.endOdometer, updated_at: now }, { merge: true });
     }
   }
 
+  invalidateFleetCache();
   return newTrip;
 }
 
@@ -1005,7 +1063,8 @@ export async function updateTripInFirestore(id: string, data: any): Promise<Trip
     updatedData.driver_notes = data.driverNotes ?? data.driver_notes;
   }
 
-  await setDoc(tripRef, updatedData, { merge: true });
+  await safeSetDoc(tripRef, updatedData, { merge: true });
+  invalidateFleetCache();
 
   const finalSnap = await getDoc(tripRef);
   return { id, ...(finalSnap.data() as any) } as Trip;
@@ -1024,6 +1083,8 @@ export async function deleteTripInFirestore(
   expSnap.docs.forEach((d) => batch.delete(d.ref));
   batch.delete(tripRef);
   await batch.commit();
+
+  invalidateFleetCache();
 
   return { success: true, deletedRows: 1, deletedExpenseIds };
 }
@@ -1060,7 +1121,8 @@ export async function createExpenseInFirestore(data: {
     updated_at: now,
   };
 
-  await setDoc(doc(firestore, 'expenses', id), newExpense);
+  await safeSetDoc(doc(firestore, 'expenses', id), newExpense);
+  invalidateFleetCache();
   return newExpense;
 }
 
@@ -1084,7 +1146,8 @@ export async function updateExpenseInFirestore(id: string, data: any): Promise<E
   if (data.note !== undefined) updatedData.note = data.note;
   if (data.date !== undefined) updatedData.date = data.date;
 
-  await setDoc(expRef, updatedData, { merge: true });
+  await safeSetDoc(expRef, updatedData, { merge: true });
+  invalidateFleetCache();
 
   const finalSnap = await getDoc(expRef);
   return { id, ...(finalSnap.data() as any) } as Expense;
@@ -1093,19 +1156,21 @@ export async function updateExpenseInFirestore(id: string, data: any): Promise<E
 export async function deleteExpenseInFirestore(id: string): Promise<{ success: boolean; deletedRows: number }> {
   const firestore = requireDb();
   await deleteDoc(doc(firestore, 'expenses', id));
+  invalidateFleetCache();
   return { success: true, deletedRows: 1 };
 }
 
 export async function saveVehicleIncomeInFirestore(vehicleId: string, month: string, amount: number): Promise<void> {
   const firestore = requireDb();
   const id = `inc-${vehicleId}-${month}`;
-  await setDoc(doc(firestore, 'vehicle_incomes', id), {
+  await safeSetDoc(doc(firestore, 'vehicle_incomes', id), {
     id,
     vehicle_id: vehicleId,
     month,
     amount: Number(amount),
     updated_at: new Date().toISOString(),
   });
+  invalidateFleetCache();
 }
 
 // -----------------------------------------------------------------------------

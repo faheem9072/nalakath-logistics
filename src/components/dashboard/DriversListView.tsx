@@ -111,11 +111,9 @@ export function DriversListView() {
     const unsubRepo = dataRepo.subscribe(() => {
       loadDriversData();
     });
-    const interval = setInterval(loadDriversData, 4000);
 
     return () => {
       unsubRepo();
-      clearInterval(interval);
     };
   }, []);
 

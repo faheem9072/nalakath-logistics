@@ -110,11 +110,9 @@ export function VehiclesListView() {
     const unsubRepo = dataRepo.subscribe(() => {
       loadVehiclesData();
     });
-    const interval = setInterval(loadVehiclesData, 4000);
 
     return () => {
       unsubRepo();
-      clearInterval(interval);
     };
   }, []);
 

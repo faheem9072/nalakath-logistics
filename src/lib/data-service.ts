@@ -160,10 +160,10 @@ class ServerFleetRepository {
         this.sessionDriverId = null;
       }
 
-      // Initial fetch and start live sync polling (3.5s interval fallback)
+      // Initial fetch and start live sync polling (10s interval fallback, pauses on hidden tab)
       this.refresh();
       this.initRealtimeStream();
-      this.pollTimer = setInterval(() => this.refresh(), 3500);
+      this.pollTimer = setInterval(() => this.refresh(), 10000);
     }
   }
 
@@ -180,7 +180,7 @@ class ServerFleetRepository {
         this.refresh();
       });
       this.eventSource.onerror = () => {
-        // Will auto reconnect in standard EventSource; 3.5s polling acts as fallback
+        // Will auto reconnect in standard EventSource; 10s polling acts as fallback
       };
     } catch (err) {
       console.warn('Realtime SSE stream setup error (will rely on polling):', err);
@@ -203,6 +203,7 @@ class ServerFleetRepository {
   }
 
   public async refresh(): Promise<void> {
+    if (typeof document !== 'undefined' && document.hidden) return;
     if (this.isFetching) return;
     this.isFetching = true;
     try {
@@ -322,8 +323,8 @@ class ServerFleetRepository {
         throw new Error(data.error || `Action ${action} failed`);
       }
 
-      // Refresh shared state immediately across all clients
-      await this.refresh();
+      // Non-blocking background sync so user UI never lags waiting for 7 collections
+      this.refresh().catch(() => {});
       return data;
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -1302,6 +1303,18 @@ class ServerFleetRepository {
       destination: data.destination,
       notes: data.notes,
     });
+    if (res.trip && this.state) {
+      if (!this.state.trips) this.state.trips = [];
+      this.state.trips = [res.trip, ...this.state.trips.filter((t) => t.id !== res.trip.id)];
+      if (this.state.vehicles) {
+        this.state.vehicles = this.state.vehicles.map((v) =>
+          v.id === data.vehicleId
+            ? { ...v, current_odometer: data.startOdometer, active_trip: res.trip, trip_status: 'on_trip' }
+            : v
+        );
+      }
+      this.notify();
+    }
     return res.trip;
   }
 
@@ -1321,6 +1334,18 @@ class ServerFleetRepository {
       isFinalTripOfDuty: data.isFinalTripOfDuty,
       expenses: data.expenses,
     });
+    if (res.trip && this.state) {
+      if (!this.state.trips) this.state.trips = [];
+      this.state.trips = [res.trip, ...this.state.trips.filter((t) => t.id !== res.trip.id)];
+      if (this.state.vehicles) {
+        this.state.vehicles = this.state.vehicles.map((v) =>
+          v.id === res.trip.vehicle_id
+            ? { ...v, current_odometer: data.endOdometer, active_trip: null, trip_status: 'idle' }
+            : v
+        );
+      }
+      this.notify();
+    }
     return res;
   }
 
@@ -1346,6 +1371,11 @@ class ServerFleetRepository {
       date: data.date,
       isOwner: data.isOwner,
     });
+    if (res.expense && this.state) {
+      if (!this.state.expenses) this.state.expenses = [];
+      this.state.expenses = [res.expense, ...this.state.expenses.filter((e) => e.id !== res.expense.id)];
+      this.notify();
+    }
     return res.expense;
   }
 
@@ -1477,6 +1507,17 @@ class ServerFleetRepository {
       phone: data.phone,
       pin: data.pin,
     });
+    if (res.driver && this.state) {
+      if (!this.state.drivers) this.state.drivers = [];
+      const enhancedDriver = {
+        ...res.driver,
+        current_vehicle: null,
+        active_trip: null,
+        trip_status: 'idle' as const,
+      };
+      this.state.drivers = [enhancedDriver as any, ...this.state.drivers.filter((d) => d.id !== res.driver.id)];
+      this.notify();
+    }
     return res.driver;
   }
 
@@ -1594,6 +1635,18 @@ class ServerFleetRepository {
       initialKm: data.initial_km ?? data.current_odometer,
       routeLocation: data.route_location,
     });
+    if (res.vehicle && this.state) {
+      if (!this.state.vehicles) this.state.vehicles = [];
+      const enhancedVeh = {
+        ...res.vehicle,
+        company_name: res.vehicle.company || '',
+        current_driver: null,
+        active_trip: null,
+        trip_status: 'idle' as const,
+      };
+      this.state.vehicles = [enhancedVeh as any, ...this.state.vehicles.filter((v) => v.id !== res.vehicle.id)];
+      this.notify();
+    }
     return res.vehicle;
   }
 
