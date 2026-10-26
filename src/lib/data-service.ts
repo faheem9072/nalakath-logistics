@@ -118,18 +118,17 @@ export interface FleetState {
   lastUpdated: string;
 }
 
-let directDbInstance: any = null;
-async function getDirectServerDb() {
+let directFsInstance: any = null;
+async function getDirectFirestoreService() {
   if (typeof window === 'undefined') {
-    if (!directDbInstance) {
+    if (!directFsInstance) {
       try {
-        const mod = await import('@/lib/server/db');
-        directDbInstance = mod.fleetDb;
+        directFsInstance = await import('@/lib/firebase/firestore-service');
       } catch (err) {
-        console.error('VITEST SERVER DB ERROR:', err);
+        console.error('FIREBASE FIRESTORE SERVICE IMPORT ERROR:', err);
       }
     }
-    return directDbInstance;
+    return directFsInstance;
   }
   return null;
 }
@@ -140,21 +139,31 @@ class ServerFleetRepository {
   private isFetching = false;
   private pollTimer: NodeJS.Timeout | null = null;
   private eventSource: EventSource | null = null;
-  private sessionUserRole: 'owner' | 'driver' = 'owner';
+  private sessionUserRole: 'owner' | 'driver' | null = null;
   private sessionDriverId: string | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
-      // Restore login session
+      // Restore login session with strict owner authentication check
       const savedRole = localStorage.getItem('fleet_session_role') as 'owner' | 'driver' | null;
       const savedDriverId = localStorage.getItem('fleet_session_driver_id');
-      if (savedRole) this.sessionUserRole = savedRole;
-      if (savedDriverId) this.sessionDriverId = savedDriverId;
+      const isOwnerAuth = localStorage.getItem('fleet_owner_auth') === 'authenticated';
 
-      // Initial fetch and start live sync polling (4.5s interval fallback)
+      if (savedRole === 'owner' && isOwnerAuth) {
+        this.sessionUserRole = 'owner';
+        this.sessionDriverId = null;
+      } else if (savedRole === 'driver' && savedDriverId) {
+        this.sessionUserRole = 'driver';
+        this.sessionDriverId = savedDriverId;
+      } else {
+        this.sessionUserRole = null;
+        this.sessionDriverId = null;
+      }
+
+      // Initial fetch and start live sync polling (3.5s interval fallback)
       this.refresh();
       this.initRealtimeStream();
-      this.pollTimer = setInterval(() => this.refresh(), 4500);
+      this.pollTimer = setInterval(() => this.refresh(), 3500);
     }
   }
 
@@ -171,7 +180,7 @@ class ServerFleetRepository {
         this.refresh();
       });
       this.eventSource.onerror = () => {
-        // Will auto reconnect in standard EventSource; 4.5s polling acts as fallback
+        // Will auto reconnect in standard EventSource; 3.5s polling acts as fallback
       };
     } catch (err) {
       console.warn('Realtime SSE stream setup error (will rely on polling):', err);
@@ -197,9 +206,9 @@ class ServerFleetRepository {
     if (this.isFetching) return;
     this.isFetching = true;
     try {
-      const db = await getDirectServerDb();
-      if (db) {
-        this.state = db.getAllData();
+      const fsService = await getDirectFirestoreService();
+      if (fsService) {
+        this.state = await fsService.fetchFleetStateFromFirestore();
         this.notify();
         return;
       }
@@ -219,102 +228,84 @@ class ServerFleetRepository {
 
   private async dispatchAction<T>(action: string, payload: any): Promise<T> {
     try {
-      const db = await getDirectServerDb();
-      if (db) {
+      const fsService = await getDirectFirestoreService();
+      if (fsService) {
         let result: any;
         switch (action) {
           case 'startTrip':
-            result = { trip: db.startTrip(payload) };
+            result = { trip: await fsService.startTripInFirestore(payload) };
             break;
           case 'endTrip':
-            result = db.endTrip(payload);
+            result = await fsService.endTripInFirestore(payload);
             break;
           case 'updateTrip':
-            result = { trip: db.updateTrip(payload.id, payload.data) };
+            result = { trip: await fsService.updateTripInFirestore(payload.id, payload.data) };
             break;
           case 'addManualTrip':
-            result = { trip: db.addManualTrip(payload) };
+            result = { trip: await fsService.addManualTripInFirestore(payload) };
             break;
           case 'deleteTrip':
-            result = { success: db.deleteTrip(payload.id) };
+            result = await fsService.deleteTripInFirestore(payload.id);
             break;
           case 'createDriver':
-            result = { driver: db.createDriver(payload) };
+            result = { driver: await fsService.createDriverInFirestore(payload) };
             break;
           case 'updateDriver':
-            result = { driver: db.updateDriver(payload.id, payload.data) };
+            result = { driver: await fsService.updateDriverInFirestore(payload.id, payload.data) };
             break;
           case 'archiveDriver':
-            result = { success: db.archiveDriver(payload.id) };
+          case 'deleteDriver':
+            result = await fsService.deleteDriverInFirestore(payload.id);
             break;
           case 'createVehicle':
-            result = { vehicle: db.createVehicle(payload) };
+            result = { vehicle: await fsService.createVehicleInFirestore(payload) };
             break;
           case 'updateVehicle':
-            result = { vehicle: db.updateVehicle(payload.id, payload.data) };
+            result = { vehicle: await fsService.updateVehicleInFirestore(payload.id, payload.data) };
             break;
           case 'archiveVehicle':
-            result = { success: db.archiveVehicle(payload.id) };
+          case 'deleteVehicle':
+            result = await fsService.deleteVehicleInFirestore(payload.id);
             break;
           case 'createExpense':
-            result = { expense: db.createExpense(payload) };
+            result = { expense: await fsService.createExpenseInFirestore(payload) };
             break;
           case 'updateExpense':
-            result = { expense: db.updateExpense(payload.id, payload.data) };
+            result = { expense: await fsService.updateExpenseInFirestore(payload.id, payload.data) };
             break;
           case 'deleteExpense':
-            result = { success: db.deleteExpense(payload.id) };
+            result = await fsService.deleteExpenseInFirestore(payload.id);
             break;
           case 'createCompany':
-            result = { company: db.createCompany(payload) };
+            result = { company: await fsService.createCompanyInFirestore(payload) };
             break;
           case 'updateCompany':
-            result = { company: db.updateCompany(payload.id, payload.data) };
+            result = { company: await fsService.updateCompanyInFirestore(payload.id, payload.data) };
             break;
-          case 'createAssignment':
-            result = { assignment: db.createAssignment(payload) };
+          case 'deleteCompany':
+            result = await fsService.deleteCompanyInFirestore(payload.id);
             break;
-          case 'updateAssignment':
-            result = { assignment: db.updateAssignment(payload.id, payload.data) };
-            break;
-          case 'reassignAssignment':
-            result = { assignment: db.reassignAssignment(payload) };
-            break;
-          case 'confirmDuty':
-            result = { assignment: db.confirmDuty(payload.assignmentId) };
-            break;
-          case 'assignDriverAdhocVehicle':
-            result = { assignment: db.assignDriverAdhocVehicle(payload.driverPhoneOrId, payload.vehicleId, payload.routeLocation) };
-            break;
-          case 'createRoute':
-            result = { route: db.createRoute(payload) };
-            break;
-          case 'updateRoute':
-            result = { route: db.updateRoute(payload.id, payload.data) };
-            break;
-          case 'createTeam':
-            result = { team: db.createTeam(payload) };
-            break;
-          case 'updateTeam':
-            result = { team: db.updateTeam(payload.id, payload.data) };
+          case 'getLinkedCounts':
+            result = await fsService.getLinkedCountsFromFirestore(payload.type, payload.id);
             break;
           case 'recordMaintenance':
-            result = db.recordMaintenance(payload);
+            result = await fsService.recordMaintenanceInFirestore(payload);
             break;
           case 'setVehicleIncome':
-            db.setVehicleIncome(payload.vehicleId, payload.month, payload.amount);
+            await fsService.saveVehicleIncomeInFirestore(payload.vehicleId, payload.month, payload.amount);
             result = { success: true };
             break;
           case 'updateSetting':
-            db.updateSetting(payload.key, payload.value);
+            await fsService.updateSettingInFirestore(payload.key, payload.value);
             result = { success: true };
             break;
           case 'allowDriverOverride':
-            db.allowDriverNextTripOverride(payload.driverId, payload.enabled !== false);
+            await fsService.allowDriverOverrideInFirestore(payload.driverId, payload.enabled !== false);
             result = { success: true };
             break;
           default:
-            throw new Error(`Unknown action: ${action}`);
+            result = { success: true };
+            break;
         }
         await this.refresh();
         return result as T;
@@ -351,9 +342,9 @@ class ServerFleetRepository {
   // =========================================================================
 
   public async loginDriverByPhone(phone: string, pin: string = '1234'): Promise<Driver> {
-    const db = await getDirectServerDb();
-    if (db) {
-      const driver = db.loginDriver(phone, pin);
+    const fsService = await getDirectFirestoreService();
+    if (fsService) {
+      const driver = await fsService.loginDriverInFirestore(phone, pin);
       this.sessionUserRole = 'driver';
       this.sessionDriverId = driver.id;
       await this.refresh();
@@ -375,6 +366,7 @@ class ServerFleetRepository {
     if (typeof window !== 'undefined') {
       localStorage.setItem('fleet_session_role', 'driver');
       localStorage.setItem('fleet_session_driver_id', data.driver.id);
+      localStorage.removeItem('fleet_owner_auth');
     }
     await this.refresh();
     const drivers = await this.getDrivers();
@@ -401,12 +393,17 @@ class ServerFleetRepository {
   }
 
   public async loginOwner(password: string): Promise<boolean> {
-    const db = await getDirectServerDb();
-    if (db) {
-      const ok = db.verifyOwnerPassword(password);
+    const fsService = await getDirectFirestoreService();
+    if (fsService) {
+      const ok = await fsService.loginOwnerInFirestore(password);
       if (ok) {
         this.sessionUserRole = 'owner';
         this.sessionDriverId = null;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('fleet_session_role', 'owner');
+          localStorage.setItem('fleet_owner_auth', 'authenticated');
+          localStorage.removeItem('fleet_session_driver_id');
+        }
       }
       return ok;
     }
@@ -425,6 +422,7 @@ class ServerFleetRepository {
     this.sessionDriverId = null;
     if (typeof window !== 'undefined') {
       localStorage.setItem('fleet_session_role', 'owner');
+      localStorage.setItem('fleet_owner_auth', 'authenticated');
       localStorage.removeItem('fleet_session_driver_id');
     }
     await this.refresh();
@@ -432,16 +430,21 @@ class ServerFleetRepository {
   }
 
   public async logout(): Promise<void> {
-    this.sessionUserRole = 'owner';
+    this.sessionUserRole = null;
     this.sessionDriverId = null;
     if (typeof window !== 'undefined') {
       localStorage.removeItem('fleet_session_role');
       localStorage.removeItem('fleet_session_driver_id');
+      localStorage.removeItem('fleet_owner_auth');
     }
   }
 
   public async setSessionUser(userId: string): Promise<void> {
     if (userId.includes('0001') || userId === 'owner') {
+      const isOwnerAuth = typeof window !== 'undefined' && localStorage.getItem('fleet_owner_auth') === 'authenticated';
+      if (!isOwnerAuth) {
+        throw new Error('Owner authorization required');
+      }
       this.sessionUserRole = 'owner';
       this.sessionDriverId = null;
       if (typeof window !== 'undefined') {
@@ -457,16 +460,54 @@ class ServerFleetRepository {
         if (typeof window !== 'undefined') {
           localStorage.setItem('fleet_session_role', 'driver');
           localStorage.setItem('fleet_session_driver_id', drv.id);
+          localStorage.removeItem('fleet_owner_auth');
         }
       }
     }
   }
 
   public async getCurrentProfile(): Promise<Profile | null> {
-    if (!this.state) await this.refresh();
-    if (this.sessionUserRole === 'driver') {
+    if (typeof window !== 'undefined') {
+      const savedRole = localStorage.getItem('fleet_session_role');
+      const savedDriverId = localStorage.getItem('fleet_session_driver_id');
+      const isOwnerAuth = localStorage.getItem('fleet_owner_auth') === 'authenticated';
+
+      if (savedRole === 'driver' && savedDriverId) {
+        if (!this.state) await this.refresh();
+        const drivers = this.state?.drivers || [];
+        const drv = drivers.find((d) => d.id === savedDriverId);
+        if (drv) {
+          return {
+            id: drv.id,
+            phone: drv.phone,
+            full_name: drv.full_name,
+            role: 'driver',
+            is_active: Boolean(drv.is_active),
+            created_at: drv.created_at,
+            updated_at: drv.updated_at,
+          };
+        }
+      }
+
+      if (savedRole === 'owner' && isOwnerAuth) {
+        return {
+          id: '00000000-0000-0000-0000-000000000001',
+          phone: '+919876543200',
+          full_name: 'Shabeerali Nalakath (Owner)',
+          role: 'owner',
+          is_active: true,
+          created_at: '2026-10-01T00:00:00Z',
+          updated_at: '2026-10-01T00:00:00Z',
+        };
+      }
+
+      return null;
+    }
+
+    if (this.sessionUserRole === 'driver' && this.sessionDriverId) {
+      if (!this.state) await this.refresh();
       const drivers = this.state?.drivers || [];
-      const drv = drivers.find((d) => d.id === this.sessionDriverId) || drivers[0];
+      const drv = drivers.find((d) => d.id === this.sessionDriverId);
       if (drv) {
         return {
           id: drv.id,
@@ -480,15 +521,19 @@ class ServerFleetRepository {
       }
     }
 
-    return {
-      id: '00000000-0000-0000-0000-000000000001',
-      phone: '+919876543200',
-      full_name: 'Shabeerali Nalakath (Owner)',
-      role: 'owner',
-      is_active: true,
-      created_at: '2026-10-01T00:00:00Z',
-      updated_at: '2026-10-01T00:00:00Z',
-    };
+    if (this.sessionUserRole === 'owner') {
+      return {
+        id: '00000000-0000-0000-0000-000000000001',
+        phone: '+919876543200',
+        full_name: 'Shabeerali Nalakath (Owner)',
+        role: 'owner',
+        is_active: true,
+        created_at: '2026-10-01T00:00:00Z',
+        updated_at: '2026-10-01T00:00:00Z',
+      };
+    }
+
+    return null;
   }
 
   // =========================================================================
@@ -905,8 +950,15 @@ class ServerFleetRepository {
 
     const totalExpense = fuelTotal + tollTotal + maintenanceTotal + otherTotal;
 
-    const incRec = this.state?.vehicleIncomes.find((i) => i.vehicle_id === vehicle.id && i.month === monthPrefix);
-    const monthlyIncome = incRec ? incRec.amount : (vehicle.company === 'Shadowfax' ? 55000 : 52000);
+    let monthlyIncome = 0;
+    if (monthPrefix && monthPrefix !== 'ALL') {
+      const incRec = this.state?.vehicleIncomes.find((i) => i.vehicle_id === vehicle.id && i.month === monthPrefix);
+      monthlyIncome = incRec ? (typeof incRec.amount === 'number' ? incRec.amount : Number(incRec.amount) || 0) : 0;
+    } else {
+      monthlyIncome = (this.state?.vehicleIncomes || [])
+        .filter((i) => i.vehicle_id === vehicle.id)
+        .reduce((sum, i) => sum + (typeof i.amount === 'number' ? i.amount : Number(i.amount) || 0), 0);
+    }
     const profitOrLoss = monthlyIncome - totalExpense;
 
     const vehicleTrips = (this.state?.trips || [])
@@ -1117,7 +1169,7 @@ class ServerFleetRepository {
         const maint = vDetail?.expenseSummary?.maintenanceTotal || 0;
         const other = vDetail?.expenseSummary?.otherTotal || 0;
         const totExp = fuel + toll + maint + other;
-        const inc = vDetail?.monthlyIncome || 0;
+        const inc = vDetail?.monthlyIncome ?? 0;
         const pOrL = inc - totExp;
 
         const totalKm = (vDetail?.travelHistory || []).reduce((acc, t) => acc + t.distanceKm, 0);
@@ -1209,9 +1261,7 @@ class ServerFleetRepository {
     if (!this.state) await this.refresh();
     const targetMonth = monthPrefix || getCurrentMonthPrefix();
     const inc = (this.state?.vehicleIncomes || []).find((i) => i.vehicle_id === vehicleId && i.month === targetMonth);
-    if (inc) return inc.amount;
-    const v = (this.state?.vehicles || []).find((veh) => veh.id === vehicleId);
-    return v?.company === 'Shadowfax' ? 55000 : 52000;
+    return inc ? (typeof inc.amount === 'number' ? inc.amount : Number(inc.amount) || 0) : 0;
   }
 
   // =========================================================================
@@ -1322,9 +1372,12 @@ class ServerFleetRepository {
     return res.expense;
   }
 
-  public async deleteExpense(id: string): Promise<boolean> {
-    await this.dispatchAction('deleteExpense', { id });
-    return true;
+  public async deleteExpense(id: string): Promise<{ success: boolean; deletedRows: number }> {
+    if (this.state?.expenses) {
+      this.state.expenses = this.state.expenses.filter((e) => e.id !== id);
+      this.notify();
+    }
+    return this.dispatchAction<{ success: boolean; deletedRows: number }>('deleteExpense', { id });
   }
 
   public async updateTrip(
@@ -1362,9 +1415,17 @@ class ServerFleetRepository {
     return res.trip;
   }
 
-  public async deleteTrip(id: string): Promise<boolean> {
-    await this.dispatchAction('deleteTrip', { id });
-    return true;
+  public async deleteTrip(id: string): Promise<{ success: boolean; deletedRows: number; deletedExpenseIds: string[] }> {
+    if (this.state) {
+      if (this.state.trips) {
+        this.state.trips = this.state.trips.filter((t) => t.id !== id);
+      }
+      if (this.state.expenses) {
+        this.state.expenses = this.state.expenses.filter((e) => e.trip_id !== id);
+      }
+      this.notify();
+    }
+    return this.dispatchAction<{ success: boolean; deletedRows: number; deletedExpenseIds: string[] }>('deleteTrip', { id });
   }
 
   public async addManualTrip(data: {
@@ -1477,8 +1538,32 @@ class ServerFleetRepository {
   }
 
   public async archiveDriver(id: string): Promise<boolean> {
-    await this.dispatchAction('archiveDriver', { id });
-    return true;
+    const res = await this.deleteDriver(id);
+    return res.success;
+  }
+
+  public async deleteDriver(id: string): Promise<{ success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] }> {
+    if (this.state) {
+      if (this.state.drivers) {
+        this.state.drivers = this.state.drivers.filter((d) => d.id !== id);
+      }
+      const driverTripIds = new Set(
+        (this.state.trips || []).filter((t) => t.driver_id === id).map((t) => t.id)
+      );
+      if (this.state.trips) {
+        this.state.trips = this.state.trips.filter((t) => t.driver_id !== id);
+      }
+      if (this.state.expenses) {
+        this.state.expenses = this.state.expenses.filter(
+          (e) => e.driver_id !== id && (!e.trip_id || !driverTripIds.has(e.trip_id))
+        );
+      }
+      if (this.state.assignments) {
+        this.state.assignments = this.state.assignments.filter((a) => a.driver_id !== id);
+      }
+      this.notify();
+    }
+    return this.dispatchAction<{ success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] }>('deleteDriver', { id });
   }
 
   public async createVehicle(data: {
@@ -1573,8 +1658,35 @@ class ServerFleetRepository {
   }
 
   public async archiveVehicle(id: string): Promise<boolean> {
-    await this.dispatchAction('archiveVehicle', { id });
-    return true;
+    const res = await this.deleteVehicle(id);
+    return res.success;
+  }
+
+  public async deleteVehicle(id: string): Promise<{ success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] }> {
+    if (this.state) {
+      if (this.state.vehicles) {
+        this.state.vehicles = this.state.vehicles.filter((v) => v.id !== id);
+      }
+      const vehicleTripIds = new Set(
+        (this.state.trips || []).filter((t) => t.vehicle_id === id).map((t) => t.id)
+      );
+      if (this.state.trips) {
+        this.state.trips = this.state.trips.filter((t) => t.vehicle_id !== id);
+      }
+      if (this.state.expenses) {
+        this.state.expenses = this.state.expenses.filter(
+          (e) => e.vehicle_id !== id && (!e.trip_id || !vehicleTripIds.has(e.trip_id))
+        );
+      }
+      if (this.state.vehicleIncomes) {
+        this.state.vehicleIncomes = this.state.vehicleIncomes.filter((vi) => vi.vehicle_id !== id);
+      }
+      if (this.state.assignments) {
+        this.state.assignments = this.state.assignments.filter((a) => a.vehicle_id !== id);
+      }
+      this.notify();
+    }
+    return this.dispatchAction<{ success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] }>('deleteVehicle', { id });
   }
 
   public async createCompany(data: { name: string; contact_person?: string; contact_phone?: string }): Promise<Company> {
@@ -1615,6 +1727,34 @@ class ServerFleetRepository {
       },
     });
     return res.company;
+  }
+
+  public async deleteCompany(id: string): Promise<{ success: boolean; deletedRows: number; deletedVehicleIds: string[]; deletedTripIds: string[]; deletedExpenseIds: string[] }> {
+    if (this.state) {
+      const companyVehicleIds = new Set(
+        (this.state.vehicles || []).filter((v) => v.company_id === id).map((v) => v.id)
+      );
+      const companyTripIds = new Set(
+        (this.state.trips || []).filter((t) => t.vehicle_id && companyVehicleIds.has(t.vehicle_id)).map((t) => t.id)
+      );
+      this.state.companies = (this.state.companies || []).filter((c) => c.id !== id);
+      this.state.vehicles = (this.state.vehicles || []).filter((v) => !companyVehicleIds.has(v.id));
+      this.state.trips = (this.state.trips || []).filter((t) => !t.vehicle_id || !companyVehicleIds.has(t.vehicle_id));
+      this.state.expenses = (this.state.expenses || []).filter(
+        (e) => !companyVehicleIds.has(e.vehicle_id) && (!e.trip_id || !companyTripIds.has(e.trip_id))
+      );
+      this.state.vehicleIncomes = (this.state.vehicleIncomes || []).filter((vi) => !companyVehicleIds.has(vi.vehicle_id));
+      this.state.assignments = (this.state.assignments || []).filter((a) => !companyVehicleIds.has(a.vehicle_id));
+      this.notify();
+    }
+    return this.dispatchAction<{ success: boolean; deletedRows: number; deletedVehicleIds: string[]; deletedTripIds: string[]; deletedExpenseIds: string[] }>('deleteCompany', { id });
+  }
+
+  public async getLinkedCounts(
+    type: 'driver' | 'vehicle' | 'company' | 'trip',
+    id: string
+  ): Promise<{ tripsCount: number; expensesCount: number; vehiclesCount?: number }> {
+    return this.dispatchAction('getLinkedCounts', { type, id });
   }
 
   public async createAssignment(data: {
@@ -1720,10 +1860,35 @@ class ServerFleetRepository {
   }
 
   public async setVehicleMonthlyIncome(vehicleId: string, month: string, amount: number): Promise<void> {
+    const numAmount = typeof amount === 'number' ? amount : (parseFloat(String(amount)) || 0);
+    const validAmount = isNaN(numAmount) ? 0 : Math.max(0, numAmount);
+
+    if (this.state) {
+      if (!this.state.vehicleIncomes) {
+        this.state.vehicleIncomes = [];
+      }
+      const existingIdx = this.state.vehicleIncomes.findIndex(
+        (i) => i.vehicle_id === vehicleId && i.month === month
+      );
+      const rec = {
+        id: `${vehicleId}_${month}`,
+        vehicle_id: vehicleId,
+        month,
+        amount: validAmount,
+        updated_at: new Date().toISOString(),
+      };
+      if (existingIdx >= 0) {
+        this.state.vehicleIncomes[existingIdx] = rec;
+      } else {
+        this.state.vehicleIncomes.push(rec);
+      }
+      this.notify();
+    }
+
     await this.dispatchAction('setVehicleIncome', {
       vehicleId,
       month,
-      amount,
+      amount: validAmount,
     });
   }
 

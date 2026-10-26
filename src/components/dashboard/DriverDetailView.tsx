@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { dataRepo, DriverMonthlySummary } from '@/lib/data-service';
 import { db, isFirebaseConfigured } from '@/lib/firebase/config';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { Driver, Vehicle } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
 import {
@@ -14,7 +14,6 @@ import {
   Pencil,
   Trash2,
   CheckCircle2,
-  Archive,
   X,
   AlertCircle,
   Plus,
@@ -124,35 +123,9 @@ export function DriverDetailView({
     const unsub = dataRepo.subscribe(loadDriverData);
     const interval = setInterval(loadDriverData, 4000);
 
-    let unsubFirestore: (() => void) | undefined;
-    if (isFirebaseConfigured && db) {
-      try {
-        unsubFirestore = onSnapshot(doc(db, 'drivers', driverId), (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            setDriver((prev) => {
-              if (!prev) return null;
-              return {
-                ...prev,
-                full_name: data.full_name ?? prev.full_name,
-                phone: data.phone ?? prev.phone,
-                pin: data.pin ?? prev.pin,
-                is_active: data.is_active ?? prev.is_active,
-                status: data.status ?? prev.status,
-                allow_next_trip_override: data.allow_next_trip_override ?? prev.allow_next_trip_override,
-              };
-            });
-          }
-        });
-      } catch (err) {
-        console.warn('Firestore driver listener failed:', err);
-      }
-    }
-
     return () => {
       unsub();
       clearInterval(interval);
-      if (unsubFirestore) unsubFirestore();
     };
   }, [driverId, selectedMonth, isEditDriverOpen]);
 
@@ -220,65 +193,49 @@ export function DriverDetailView({
     const nowIso = new Date().toISOString();
 
     try {
-      if (isFirebaseConfigured && db) {
-        const driverRef = doc(db, 'drivers', targetId);
-        await setDoc(
-          driverRef,
-          {
-            id: targetId,
-            full_name: name,
-            phone: phone,
-            pin: pin,
-            is_active: isActive,
-            status: isActive ? (driver.status || 'idle') : 'inactive',
-            updated_at: nowIso,
-          },
-          { merge: true }
-        );
-      }
-
-      await dataRepo
-        .updateDriver(targetId, {
-          full_name: name,
-          phone,
-          pin,
-          is_active: isActive,
-        })
-        .catch((err) => console.warn('dataRepo.updateDriver secondary sync:', err));
+      await dataRepo.updateDriver(targetId, {
+        full_name: name,
+        phone,
+        pin,
+        is_active: isActive,
+      });
 
       setIsEditDriverOpen(false);
       showSavedNotice('Driver details saved successfully!');
       await loadDriverData();
       if (onDriverUpdated) onDriverUpdated();
     } catch (err: unknown) {
-      console.error('Failed to save driver to Firestore:', err);
+      console.error('Failed to save driver:', err);
       setDriverEditError(err instanceof Error ? err.message : 'Failed to update driver');
     } finally {
       setIsSubmittingDriver(false);
     }
   };
 
-  const handleArchiveDriver = async () => {
+  const handleDeleteDriver = async () => {
     if (!driver) return;
-    if (confirm(`Archive driver "${driver.full_name}"? Past trips and history will be preserved.`)) {
-      try {
-        if (isFirebaseConfigured && db) {
-          const driverRef = doc(db, 'drivers', driver.id);
-          await setDoc(driverRef, {
-            id: driver.id,
-            is_active: false,
-            status: 'inactive',
-            updated_at: new Date().toISOString(),
-          }, { merge: true });
-        }
-        await dataRepo.archiveDriver(driver.id).catch(() => {});
-        showSavedNotice('Driver archived. Past trips preserved.');
-        if (onDriverUpdated) onDriverUpdated();
-        onBack();
-      } catch (err) {
-        console.error('Failed to archive driver in Firestore:', err);
-        alert('Failed to archive driver: ' + (err instanceof Error ? err.message : String(err)));
+    try {
+      const counts = await dataRepo.getLinkedCounts('driver', driver.id).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
+      let linkedParts: string[] = [];
+      if (counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
+      if (counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
+      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
+      const confirmMsg = `Delete driver ${driver.full_name}?${linkedText} This cannot be undone.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const res = await dataRepo.deleteDriver(driver.id);
+      if (res && res.deletedRows === 0) {
+        alert('Error: Driver could not be deleted (record not found).');
+        return;
       }
+
+      showSavedNotice(`Driver "${driver.full_name}" deleted successfully.`);
+      if (onDriverUpdated) onDriverUpdated();
+      onBack();
+    } catch (err) {
+      console.error('Failed to delete driver:', err);
+      alert('Failed to delete driver: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -336,14 +293,14 @@ export function DriverDetailView({
 
   const handleOpenAddMissedTrip = () => {
     setAddTripVehId(vehicles[0]?.id || '');
-    setAddTripStartPlace('Calicut Logistics Central');
-    setAddTripEndPlace('Kochi Terminal');
-    setAddTripDate(`${selectedMonth === 'ALL' ? '2026-10' : selectedMonth}-18`);
+    setAddTripStartPlace('');
+    setAddTripEndPlace('');
+    setAddTripDate(`${selectedMonth === 'ALL' ? '2026-10' : selectedMonth}-01`);
     setAddTripStartTime('08:00');
     setAddTripEndTime('18:00');
     setAddTripStartKm('');
     setAddTripEndKm('');
-    setAddTripNotes('Manual entry by owner');
+    setAddTripNotes('');
     setAddTripError(null);
     setIsAddTripOpen(true);
   };
@@ -394,11 +351,25 @@ export function DriverDetailView({
   };
 
   const handleDeleteTrip = async (tripId: string) => {
-    if (confirm('Delete this trip entry? This cannot be undone.')) {
-      await dataRepo.deleteTrip(tripId);
+    try {
+      const counts = await dataRepo.getLinkedCounts('trip', tripId).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
+      let linkedText = counts.expensesCount > 0 ? ` This will also delete ${counts.expensesCount} expenses.` : '';
+      const confirmMsg = `Delete this trip?${linkedText} This cannot be undone.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const res = await dataRepo.deleteTrip(tripId);
+      if (res && res.deletedRows === 0) {
+        alert('Error: Trip could not be deleted (record not found).');
+        return;
+      }
+
       showSavedNotice('Trip deleted successfully!');
       await loadDriverData();
       if (onDriverUpdated) onDriverUpdated();
+    } catch (err: unknown) {
+      console.error('Failed to delete trip:', err);
+      alert('Failed to delete trip: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -525,12 +496,12 @@ export function DriverDetailView({
               </button>
               <button
                 type="button"
-                onClick={handleArchiveDriver}
+                onClick={handleDeleteDriver}
                 className="text-[11px] text-gray-400 hover:text-rose-600 flex items-center gap-1 cursor-pointer px-1 py-1"
-                title="Archive driver"
+                title="Delete driver"
               >
-                <Archive className="w-3 h-3" />
-                <span>Archive</span>
+                <Trash2 className="w-3 h-3" />
+                <span>Delete</span>
               </button>
             </div>
           </div>
@@ -750,7 +721,7 @@ export function DriverDetailView({
                       )}
                     </div>
                     <p className="text-xs text-gray-600 font-medium mt-0.5">
-                      {trip.routeName || 'Calicut Logistics Central'} → {trip.destination || 'Kerala Corridor'}
+                      {trip.routeName || '—'} → {trip.destination || '—'}
                     </p>
                   </div>
 

@@ -37,6 +37,14 @@ export function MoveIQTopBar({
   }, []);
 
   const handleRoleSwitch = async (role: 'owner' | 'driver') => {
+    if (role === 'owner') {
+      const isOwnerAuth = typeof window !== 'undefined' && localStorage.getItem('fleet_owner_auth') === 'authenticated';
+      if (!isOwnerAuth) {
+        setIsMenuOpen(false);
+        router.push('/login?role=owner');
+        return;
+      }
+    }
     await dataRepo.setSessionUser(role);
     const updated = await dataRepo.getCurrentProfile();
     setProfile(updated);
@@ -148,43 +156,36 @@ export function MoveIQTopBar({
                   </div>
                 </div>
 
-                {/* Quick Role Switcher */}
-                <div className="py-3 border-b border-gray-100 space-y-1.5">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-1">
-                    Switch Mode
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => handleRoleSwitch('owner')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-2xl transition-colors cursor-pointer ${
-                      profile?.role === 'owner'
-                        ? 'bg-[#121316] text-white font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Shield className="w-4 h-4" />
-                      <span>Owner Dashboard</span>
-                    </div>
-                    {profile?.role === 'owner' && <Check className="w-4 h-4 text-[#D4F65B]" />}
-                  </button>
+                {/* Role Switcher - ONLY visible to verified Owners (DRIVERS NEVER SEE THIS) */}
+                {profile?.role === 'owner' && (
+                  <div className="py-3 border-b border-gray-100 space-y-1.5">
+                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-1">
+                      Mode
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleRoleSwitch('owner')}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-2xl bg-[#121316] text-white font-medium cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4" />
+                        <span>Owner Dashboard</span>
+                      </div>
+                      <Check className="w-4 h-4 text-[#D4F65B]" />
+                    </button>
 
-                  <button
-                    type="button"
-                    onClick={() => handleRoleSwitch('driver')}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-2xl transition-colors cursor-pointer ${
-                      profile?.role === 'driver'
-                        ? 'bg-[#121316] text-white font-medium'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Smartphone className="w-4 h-4" />
-                      <span>Driver Mobile App</span>
-                    </div>
-                    {profile?.role === 'driver' && <Check className="w-4 h-4 text-[#D4F65B]" />}
-                  </button>
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRoleSwitch('driver')}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-2xl text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Smartphone className="w-4 h-4" />
+                        <span>Driver View Preview</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
 
                 <div className="pt-2">
                   <button

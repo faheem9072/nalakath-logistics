@@ -4,7 +4,6 @@ import {
   generateCompanyExcel,
   generateDriverExcel,
 } from '@/lib/utils/excel-builder';
-import { fleetDb } from '@/lib/server/db';
 import { dataRepo } from '@/lib/data-service';
 
 export async function POST(req: NextRequest) {

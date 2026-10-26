@@ -13,6 +13,7 @@ import {
   IndianRupee,
   Calendar,
   Pencil,
+  Trash2,
   Plus,
   ArrowLeft,
   ChevronRight,
@@ -194,6 +195,41 @@ export function CompaniesListView() {
     }
   };
 
+  const handleDeleteCompany = async (companyId: string, companyName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    try {
+      const counts = await dataRepo.getLinkedCounts('company', companyId).catch(() => ({
+        vehiclesCount: 0,
+        tripsCount: 0,
+        expensesCount: 0,
+      }));
+
+      let linkedParts: string[] = [];
+      if (counts.vehiclesCount && counts.vehiclesCount > 0) linkedParts.push(`${counts.vehiclesCount} vehicles`);
+      if (counts.tripsCount && counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
+      if (counts.expensesCount && counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
+      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
+      const confirmMsg = `Delete company ${companyName}?${linkedText} This cannot be undone.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const res = await dataRepo.deleteCompany(companyId);
+      if (res && res.deletedRows === 0) {
+        alert(`Error: Company "${companyName}" was not found or already deleted.`);
+        return;
+      }
+
+      showSavedNotice(`Company "${companyName}" deleted successfully!`);
+      if (selectedCompanyId === companyId) {
+        setSelectedCompanyId(null);
+      }
+      await loadCompanies();
+    } catch (err: unknown) {
+      console.error('Failed to delete company:', err);
+      alert('Failed to delete company: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
   const handleOpenMoveVehicle = (v: Vehicle, e: React.MouseEvent) => {
     e.stopPropagation();
     setMovingVehicle(v);
@@ -284,8 +320,19 @@ export function CompaniesListView() {
               onClick={(e) => handleOpenEdit(companyReport.company, e)}
               className="w-11 h-11 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center text-gray-800 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
               aria-label="Edit company"
+              title="Edit company"
             >
               <Pencil className="w-4 h-4" />
+            </button>
+
+            <button
+              type="button"
+              onClick={(e) => handleDeleteCompany(companyReport.company.id, companyReport.company.name, e)}
+              className="w-11 h-11 rounded-2xl bg-white border border-gray-200/80 shadow-2xs flex items-center justify-center text-gray-400 hover:text-rose-600 hover:bg-gray-50 active:scale-95 transition-all cursor-pointer"
+              aria-label="Delete company"
+              title="Delete company"
+            >
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -337,21 +384,25 @@ export function CompaniesListView() {
             {/* Big Net Result Banner */}
             <div
               className={`p-4 rounded-2xl flex items-center justify-between gap-3 ${
-                isProfit
+                companyReport.profitOrLoss === 0
+                  ? 'bg-gray-900 border border-gray-700 text-gray-200'
+                  : isProfit
                   ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-400'
                   : 'bg-rose-950/70 border border-rose-500/40 text-rose-400'
               }`}
             >
               <div>
                 <p className="text-xs uppercase tracking-wider font-extrabold text-gray-400">
-                  Company Net {isProfit ? 'PROFIT' : 'LOSS'}
+                  Company Net {companyReport.profitOrLoss === 0 ? '(ZERO / INITIAL)' : isProfit ? 'PROFIT' : 'LOSS'}
                 </p>
                 <p className="text-2xl sm:text-3xl font-black tracking-tight mt-0.5">
-                  {isProfit ? '+' : '-'} ₹{Math.abs(companyReport.profitOrLoss).toLocaleString()}
+                  {companyReport.profitOrLoss === 0 ? '₹0' : `${isProfit ? '+' : '-'} ₹${Math.abs(companyReport.profitOrLoss).toLocaleString()}`}
                 </p>
               </div>
               <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
-                {isProfit ? (
+                {companyReport.profitOrLoss === 0 ? (
+                  <span className="text-xs font-black text-gray-300">₹0</span>
+                ) : isProfit ? (
                   <TrendingUp className="w-6 h-6 text-emerald-400" />
                 ) : (
                   <TrendingDown className="w-6 h-6 text-rose-400" />
@@ -464,10 +515,14 @@ export function CompaniesListView() {
                     </span>
                     <span
                       className={`font-black px-2.5 py-0.5 rounded-full text-[11px] ${
-                        vIsProfit ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                        item.profitOrLoss === 0
+                          ? 'bg-gray-100 text-gray-700'
+                          : vIsProfit
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : 'bg-rose-100 text-rose-800'
                       }`}
                     >
-                      {vIsProfit ? '+' : '-'} ₹{Math.abs(item.profitOrLoss).toLocaleString()}
+                      {item.profitOrLoss === 0 ? '₹0' : `${vIsProfit ? '+' : '-'} ₹${Math.abs(item.profitOrLoss).toLocaleString()}`}
                     </span>
                   </div>
                 </div>
@@ -626,6 +681,14 @@ export function CompaniesListView() {
                   title="Rename or edit company"
                 >
                   <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteCompany(c.id, c.name, e)}
+                  className="p-2 rounded-xl text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition-colors cursor-pointer"
+                  title="Delete company"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
                 <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-black group-hover:translate-x-0.5 transition-all ml-1" />
               </div>

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fleetDb } from '@/lib/server/db';
-import { fetchDriverByPhoneFromFirestore } from '@/lib/firebase/sync';
+import { loginDriverInFirestore } from '@/lib/firebase/firestore-service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,33 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Password / PIN is required' }, { status: 400 });
     }
 
-    let driver: any = null;
-
-    // 1. Fast path: Check local SQLite database first (instant 1ms login)
-    try {
-      driver = fleetDb.loginDriver(phone, pin);
-    } catch (localErr: any) {
-      if (localErr?.message?.includes('PIN')) {
-        return NextResponse.json({ error: localErr.message }, { status: 401 });
-      }
-
-      // 2. Fallback: If phone is not in local SQLite (e.g. cold lambda or newly registered), query Firestore
-      const firestoreDriver = await fetchDriverByPhoneFromFirestore(phone);
-      if (firestoreDriver) {
-        const expectedPin = firestoreDriver.pin || '1234';
-        if (expectedPin.trim() === pin.trim() || pin.trim() === '123456') {
-          fleetDb.upsertDriverRecord(firestoreDriver);
-          driver = firestoreDriver;
-        } else {
-          return NextResponse.json({ error: 'Incorrect 4-digit PIN. Please try again.' }, { status: 401 });
-        }
-      } else {
-        return NextResponse.json(
-          { error: 'This mobile number is not registered. Please contact the owner.' },
-          { status: 401 }
-        );
-      }
-    }
+    const driver = await loginDriverInFirestore(phone, pin);
 
     return NextResponse.json({
       success: true,

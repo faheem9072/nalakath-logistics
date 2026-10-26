@@ -11,12 +11,12 @@ export default function RootPage() {
 
   useEffect(() => {
     dataRepo.getCurrentProfile().then((profile) => {
-      if (!profile) {
-        router.push('/login');
-      } else if (profile.role === 'driver') {
-        router.push('/driver');
+      if (profile?.role === 'driver') {
+        router.replace('/driver');
+      } else if (profile?.role === 'owner') {
+        router.replace('/drivers');
       } else {
-        router.push('/dashboard');
+        router.replace('/login');
       }
     });
   }, [router]);

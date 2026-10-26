@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fleetDb } from '@/lib/server/db';
+import { loginOwnerInFirestore } from '@/lib/firebase/firestore-service';
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +9,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Password is required' }, { status: 400 });
     }
 
-    fleetDb.loginOwner(password);
+    await loginOwnerInFirestore(password);
+
     return NextResponse.json({
       success: true,
       owner: {

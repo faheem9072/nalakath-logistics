@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dataRepo } from '@/lib/data-service';
 import { db, isFirebaseConfigured } from '@/lib/firebase/config';
-import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { Driver, Vehicle } from '@/types/database';
 import { MoveIQSearchBar } from '@/components/moveiq/MoveIQSearchBar';
 import { MoveIQFilterChips } from '@/components/moveiq/MoveIQFilterChips';
@@ -89,7 +89,7 @@ export function DriversListView() {
     });
   };
 
-  const loadDataFallback = async () => {
+  const loadDriversData = async () => {
     try {
       const [allDrivers, allVehicles] = await Promise.all([
         dataRepo.getDrivers(),
@@ -100,66 +100,22 @@ export function DriversListView() {
       rawDriversRef.current = allDrivers;
       setDrivers(enhanceDrivers(allDrivers));
     } catch (err) {
-      console.error('Failed to load drivers fallback:', err);
+      console.error('Failed to load drivers from repo:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    let unsubFirestore: (() => void) | null = null;
-
-    if (isFirebaseConfigured && db) {
-      try {
-        unsubFirestore = onSnapshot(
-          collection(db, 'drivers'),
-          (snapshot) => {
-            const list: Driver[] = snapshot.docs.map((docSnap) => {
-              const data = docSnap.data();
-              return {
-                id: docSnap.id,
-                full_name: data.full_name || data.fullName || '',
-                phone: data.phone || '',
-                pin: data.pin || '1234',
-                status: data.status || 'idle',
-                is_active: data.is_active !== false && data.is_active !== 0,
-                employee_code: data.employee_code || '',
-                allow_next_trip_override: data.allow_next_trip_override ? 1 : 0,
-                created_at: data.created_at || new Date().toISOString(),
-                updated_at: data.updated_at || new Date().toISOString(),
-              } as Driver;
-            });
-
-            // Sort drivers alphabetically by name
-            list.sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
-            rawDriversRef.current = list;
-            setDrivers(enhanceDrivers(list));
-            setIsLoading(false);
-          },
-          (err) => {
-            console.error('Firestore drivers onSnapshot error:', err);
-            loadDataFallback();
-          }
-        );
-      } catch (err) {
-        console.error('Failed to attach drivers onSnapshot:', err);
-        loadDataFallback();
-      }
-    } else {
-      loadDataFallback();
-    }
-
+    loadDriversData();
     const unsubRepo = dataRepo.subscribe(() => {
-      if (rawDriversRef.current.length > 0) {
-        setDrivers(enhanceDrivers(rawDriversRef.current));
-      } else {
-        loadDataFallback();
-      }
+      loadDriversData();
     });
+    const interval = setInterval(loadDriversData, 4000);
 
     return () => {
-      if (unsubFirestore) unsubFirestore();
       unsubRepo();
+      clearInterval(interval);
     };
   }, []);
 
@@ -178,37 +134,20 @@ export function DriversListView() {
     setIsSubmittingAdd(true);
 
     try {
-      const newId = `drv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
-      const nowIso = new Date().toISOString();
-
-      if (isFirebaseConfigured && db) {
-        const driverRef = doc(db, 'drivers', newId);
-        await setDoc(driverRef, {
-          id: newId,
-          full_name: name,
-          phone,
-          pin,
-          status: 'idle',
-          is_active: true,
-          allow_next_trip_override: 0,
-          created_at: nowIso,
-          updated_at: nowIso,
-        }, { merge: true });
-      }
-
       await dataRepo.createDriver({
         full_name: name,
         phone,
         pin,
-      }).catch((err) => console.warn('dataRepo.createDriver secondary sync:', err));
+      });
 
       setIsAddDriverOpen(false);
       setAddName('');
       setAddPhone('');
       setAddPin('1234');
       showSavedNotice('New driver registered successfully!');
+      await loadDriversData();
     } catch (err: unknown) {
-      console.error('Failed to add driver to Firestore:', err);
+      console.error('Failed to add driver:', err);
       setAddError(err instanceof Error ? err.message : 'Failed to add driver');
     } finally {
       setIsSubmittingAdd(false);
@@ -239,61 +178,53 @@ export function DriversListView() {
     const nowIso = new Date().toISOString();
 
     try {
-      if (isFirebaseConfigured && db) {
-        const driverRef = doc(db, 'drivers', targetId);
-        await setDoc(
-          driverRef,
-          {
-            id: targetId,
-            full_name: name,
-            phone: phone,
-            pin: pin,
-            is_active: isActive,
-            status: isActive ? (editingDriver.status || 'idle') : 'inactive',
-            updated_at: nowIso,
-          },
-          { merge: true }
-        );
-      }
+      await dataRepo.updateDriver(targetId, {
+        full_name: name,
+        phone,
+        pin,
+        is_active: isActive,
+      });
 
-      await dataRepo
-        .updateDriver(targetId, {
-          full_name: name,
-          phone,
-          pin,
-          is_active: isActive,
-        })
-        .catch((err) => console.warn('dataRepo.updateDriver secondary sync:', err));
-
+      rawDriversRef.current = rawDriversRef.current.map((d) =>
+        d.id === targetId ? { ...d, full_name: name, phone, pin, is_active: isActive } : d
+      );
+      setDrivers(enhanceDrivers(rawDriversRef.current));
       setEditingDriver(null);
       showSavedNotice('Driver details saved!');
+      await loadDriversData();
     } catch (err: unknown) {
-      console.error('Failed to save driver to Firestore:', err);
+      console.error('Failed to save driver:', err);
       setEditError(err instanceof Error ? err.message : 'Failed to update driver');
     } finally {
       setIsSubmittingEdit(false);
     }
   };
 
-  const handleArchiveDriver = async (driverId: string, driverName: string, e: React.MouseEvent) => {
+  const handleDeleteDriver = async (driverId: string, driverName: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Archive driver "${driverName}"? Driver will be marked inactive.`)) {
-      try {
-        if (isFirebaseConfigured && db) {
-          const driverRef = doc(db, 'drivers', driverId);
-          await setDoc(driverRef, {
-            id: driverId,
-            is_active: false,
-            status: 'inactive',
-            updated_at: new Date().toISOString(),
-          }, { merge: true });
-        }
-        await dataRepo.archiveDriver(driverId).catch(() => {});
-        showSavedNotice('Driver marked inactive. Past trips preserved.');
-      } catch (err) {
-        console.error('Failed to archive driver in Firestore:', err);
-        alert('Failed to archive driver: ' + (err instanceof Error ? err.message : String(err)));
+    try {
+      const counts = await dataRepo.getLinkedCounts('driver', driverId).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
+      let linkedParts: string[] = [];
+      if (counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
+      if (counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
+      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
+      const confirmMsg = `Delete driver ${driverName}?${linkedText} This cannot be undone.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const res = await dataRepo.deleteDriver(driverId);
+      if (res && res.deletedRows === 0) {
+        alert(`Error: Driver "${driverName}" was not found or already deleted.`);
+        return;
       }
+
+      rawDriversRef.current = rawDriversRef.current.filter((d) => d.id !== driverId);
+      setDrivers(enhanceDrivers(rawDriversRef.current));
+      showSavedNotice(`Driver "${driverName}" deleted permanently!`);
+      await loadDriversData();
+    } catch (err: unknown) {
+      console.error('Failed to delete driver:', err);
+      alert('Failed to delete driver: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -343,7 +274,7 @@ export function DriversListView() {
       <DriverDetailView
         driverId={selectedDriverId}
         onBack={() => setSelectedDriverId(null)}
-        onDriverUpdated={loadDataFallback}
+        onDriverUpdated={loadDriversData}
       />
     );
   }
@@ -514,9 +445,9 @@ export function DriversListView() {
                   </button>
                   <button
                     type="button"
-                    onClick={(e) => handleArchiveDriver(d.id, d.full_name, e)}
+                    onClick={(e) => handleDeleteDriver(d.id, d.full_name, e)}
                     className="p-2 rounded-xl text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition-colors cursor-pointer"
-                    title="Archive driver"
+                    title="Delete driver"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

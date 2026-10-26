@@ -21,7 +21,15 @@ function LoginFormContent() {
     } else if (roleParam === 'driver') {
       setActiveTab('driver');
     }
-  }, [roleParam]);
+
+    dataRepo.getCurrentProfile().then((profile) => {
+      if (profile?.role === 'driver') {
+        router.replace('/driver');
+      } else if (profile?.role === 'owner') {
+        router.replace('/drivers');
+      }
+    });
+  }, [roleParam, router]);
 
   const [driverPhone, setDriverPhone] = useState('');
   const [driverPin, setDriverPin] = useState('');

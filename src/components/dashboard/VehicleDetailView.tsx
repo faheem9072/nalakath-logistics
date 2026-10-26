@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { dataRepo } from '@/lib/data-service';
 import { db, isFirebaseConfigured } from '@/lib/firebase/config';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { VehicleDetailReport, ExpenseWithDetails, VehicleTravelHistoryTrip } from '@/types/models';
 import { Vehicle, ExpenseType, ClientCompany, VehicleType, Driver, TripLocation } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
@@ -19,7 +19,6 @@ import {
   Pencil,
   Trash2,
   Plus,
-  Archive,
   X,
   AlertCircle,
   CheckCircle2,
@@ -108,9 +107,9 @@ export function VehicleDetailView({
   // Add Missed Trip Modal
   const [isAddTripOpen, setIsAddTripOpen] = useState(false);
   const [addTripDriverId, setAddTripDriverId] = useState('');
-  const [addTripStartPlace, setAddTripStartPlace] = useState('Calicut Hub');
-  const [addTripEndPlace, setAddTripEndPlace] = useState('Kochi Terminal');
-  const [addTripDate, setAddTripDate] = useState('2026-10-18');
+  const [addTripStartPlace, setAddTripStartPlace] = useState('');
+  const [addTripEndPlace, setAddTripEndPlace] = useState('');
+  const [addTripDate, setAddTripDate] = useState('2026-10-01');
   const [addTripStartTime, setAddTripStartTime] = useState('08:00');
   const [addTripEndTime, setAddTripEndTime] = useState('18:00');
   const [addTripStartKm, setAddTripStartKm] = useState('');
@@ -165,7 +164,9 @@ export function VehicleDetailView({
           setEditInitialKm(String(data.vehicle.initial_km ?? data.vehicle.current_odometer));
           setEditOdo(String(data.vehicle.current_odometer));
           setEditIsActive(data.vehicle.is_active !== false && data.vehicle.status !== 'inactive');
-          setIncomeAmountInput(String(data.monthlyIncome || 50000));
+        }
+        if (!isEditIncomeOpen) {
+          setIncomeAmountInput(String(data.monthlyIncome ?? 0));
         }
       }
     } catch (err) {
@@ -180,44 +181,11 @@ export function VehicleDetailView({
     const unsubRepo = dataRepo.subscribe(loadData);
     const interval = setInterval(loadData, 4000);
 
-    let unsubFsDoc: (() => void) | null = null;
-    const targetDocId = vehicleId || (report?.vehicle?.id);
-    if (isFirebaseConfigured && db && targetDocId) {
-      try {
-        unsubFsDoc = onSnapshot(doc(db, 'vehicles', targetDocId), (snap) => {
-          if (snap.exists()) {
-            const fsData = snap.data();
-            setReport((prev) => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                vehicle: {
-                  ...prev.vehicle,
-                  registration_number: fsData.registration_number || prev.vehicle.registration_number,
-                  make_model: fsData.make_model || prev.vehicle.make_model,
-                  company: fsData.company || fsData.company_name || prev.vehicle.company,
-                  route_location: fsData.route_location !== undefined ? fsData.route_location : prev.vehicle.route_location,
-                  vehicle_type: fsData.vehicle_type || prev.vehicle.vehicle_type,
-                  initial_km: typeof fsData.initial_km === 'number' ? fsData.initial_km : prev.vehicle.initial_km,
-                  current_odometer: typeof fsData.current_odometer === 'number' ? fsData.current_odometer : prev.vehicle.current_odometer,
-                  is_active: fsData.is_active !== false && fsData.status !== 'inactive',
-                  status: (fsData.status as any) || prev.vehicle.status,
-                },
-              };
-            });
-          }
-        });
-      } catch (err) {
-        console.warn('Firestore vehicle doc onSnapshot skipped:', err);
-      }
-    }
-
     return () => {
       unsubRepo();
       clearInterval(interval);
-      if (unsubFsDoc) unsubFsDoc();
     };
-  }, [effectiveQuery, selectedMonth, vehicleId, report?.vehicle?.id]);
+  }, [effectiveQuery, selectedMonth, vehicleId]);
 
   const handleOpenEditVehicle = () => {
     if (report) {
@@ -253,46 +221,6 @@ export function VehicleDetailView({
       const selectedComp = companies.find((c) => c.id === editCompanyId);
       const compName = selectedComp?.name || editCompany;
 
-      // Instantly update local state so there is zero delay or reversion
-      setReport((prev) =>
-        prev
-          ? {
-              ...prev,
-              vehicle: {
-                ...prev.vehicle,
-                registration_number: cleanReg,
-                make_model: cleanModel,
-                company: compName,
-                route_location: cleanLocation,
-                vehicle_type: editType,
-                initial_km: initialKmVal,
-                current_odometer: currentOdoVal,
-                is_active: editIsActive,
-                status: editIsActive ? 'active' : 'inactive',
-              },
-            }
-          : prev
-      );
-
-      if (isFirebaseConfigured && db) {
-        const vehicleRef = doc(db, 'vehicles', targetId);
-        await setDoc(vehicleRef, {
-          id: targetId,
-          registration_number: cleanReg,
-          make_model: cleanModel,
-          company_id: editCompanyId || undefined,
-          company: compName,
-          company_name: compName,
-          route_location: cleanLocation,
-          vehicle_type: editType,
-          initial_km: initialKmVal,
-          current_odometer: currentOdoVal,
-          is_active: editIsActive,
-          status: editIsActive ? 'active' : 'inactive',
-          updated_at: nowIso,
-        }, { merge: true });
-      }
-
       await dataRepo.updateVehicle(targetId, {
         registration_number: cleanReg,
         make_model: cleanModel,
@@ -303,48 +231,63 @@ export function VehicleDetailView({
         initial_km: initialKmVal,
         current_odometer: currentOdoVal,
         is_active: editIsActive,
-      }).catch((err) => console.warn('dataRepo.updateVehicle secondary sync:', err));
+      });
 
       setIsEditVehicleOpen(false);
       showSavedNotice('Vehicle details saved successfully!');
+      await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
     } catch (err: unknown) {
-      console.error('Failed to save vehicle to Firestore:', err);
+      console.error('Failed to save vehicle:', err);
       setVehicleEditError(err instanceof Error ? err.message : 'Failed to update vehicle');
     } finally {
       setIsSubmittingVehicle(false);
     }
   };
 
-  const handleArchiveVehicle = async () => {
+  const handleDeleteVehicle = async () => {
     if (!report) return;
-    if (confirm(`Archive vehicle "${report.vehicle.registration_number}"? Past trips and expense history will be preserved.`)) {
-      try {
-        if (isFirebaseConfigured && db) {
-          const vehicleRef = doc(db, 'vehicles', report.vehicle.id);
-          await setDoc(vehicleRef, {
-            id: report.vehicle.id,
-            is_active: false,
-            status: 'inactive',
-            updated_at: new Date().toISOString(),
-          }, { merge: true });
-        }
-        await dataRepo.archiveVehicle(report.vehicle.id).catch(() => {});
-        showSavedNotice('Vehicle archived. Past trips preserved.');
-        if (onVehicleUpdated) onVehicleUpdated();
-        if (onBack) onBack();
-      } catch (err) {
-        console.error('Failed to archive vehicle in Firestore:', err);
-        alert('Failed to archive vehicle: ' + (err instanceof Error ? err.message : String(err)));
+    try {
+      const counts = await dataRepo.getLinkedCounts('vehicle', report.vehicle.id).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
+      let linkedParts: string[] = [];
+      if (counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
+      if (counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
+      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
+      const confirmMsg = `Delete vehicle ${report.vehicle.registration_number}?${linkedText} This cannot be undone.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const res = await dataRepo.deleteVehicle(report.vehicle.id);
+      if (res && res.deletedRows === 0) {
+        alert('Error: Vehicle could not be deleted (record not found).');
+        return;
       }
+
+      showSavedNotice(`Vehicle "${report.vehicle.registration_number}" deleted successfully.`);
+      if (onVehicleUpdated) onVehicleUpdated();
+      if (onBack) onBack();
+    } catch (err) {
+      console.error('Failed to delete vehicle:', err);
+      alert('Failed to delete vehicle: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
   const handleSaveIncome = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!report) return;
-    const amount = parseFloat(incomeAmountInput);
+    const amount = incomeAmountInput.trim() === '' ? 0 : parseFloat(incomeAmountInput);
     if (isNaN(amount) || amount < 0) return;
+
+    // Optimistically update report state immediately so UI updates without lag
+    setReport((prev) => {
+      if (!prev) return prev;
+      const totalExpense = prev.expenses?.totals?.grandTotal ?? (prev.expenseSummary?.totalExpense ?? 0);
+      return {
+        ...prev,
+        monthlyIncome: amount,
+        profitOrLoss: amount - totalExpense,
+      };
+    });
 
     setIsSubmittingIncome(true);
     try {
@@ -354,7 +297,8 @@ export function VehicleDetailView({
       await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
     } catch (err) {
-      console.error(err);
+      console.error('Failed to save monthly income:', err);
+      alert('Failed to save monthly income: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setIsSubmittingIncome(false);
     }
@@ -428,11 +372,19 @@ export function VehicleDetailView({
   };
 
   const handleDeleteExpense = async (id: string) => {
-    if (confirm('Delete this expense entry?')) {
-      await dataRepo.deleteExpense(id);
+    try {
+      if (!window.confirm('Delete this expense? This cannot be undone.')) return;
+      const res = await dataRepo.deleteExpense(id);
+      if (res && res.deletedRows === 0) {
+        alert('Error: Expense could not be deleted (record not found).');
+        return;
+      }
       showSavedNotice('Expense deleted successfully!');
       await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
+    } catch (err: unknown) {
+      console.error('Failed to delete expense:', err);
+      alert('Failed to delete expense: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -453,8 +405,8 @@ export function VehicleDetailView({
   const handleOpenEditTrip = (trip: VehicleTravelHistoryTrip) => {
     setEditingTrip(trip);
     setTripDriverId(trip.driverId || drivers[0]?.id || '');
-    setTripStartPlace(trip.startPlace || 'Calicut Hub');
-    setTripEndPlace(trip.endPlace || 'Kochi Terminal');
+    setTripStartPlace(trip.startPlace || '');
+    setTripEndPlace(trip.endPlace || '');
     setTripStartOdo(trip.startOdometer !== null ? String(trip.startOdometer) : '');
     setTripEndOdo(trip.endOdometer !== null ? String(trip.endOdometer) : '');
     setTripStartTime(trip.startTime ? trip.startTime.slice(0, 16) : '');
@@ -503,14 +455,14 @@ export function VehicleDetailView({
 
   const handleOpenAddMissedTrip = () => {
     setAddTripDriverId(drivers[0]?.id || '');
-    setAddTripStartPlace('Calicut Logistics Central');
-    setAddTripEndPlace('Kochi Terminal');
-    setAddTripDate(`${selectedMonth}-18`);
+    setAddTripStartPlace('');
+    setAddTripEndPlace('');
+    setAddTripDate(`${selectedMonth}-01`);
     setAddTripStartTime('08:00');
     setAddTripEndTime('18:00');
-    setAddTripStartKm(String(report?.vehicle.current_odometer || '12000'));
-    setAddTripEndKm(String((report?.vehicle.current_odometer || 12000) + 120));
-    setAddTripNotes('Manual entry by owner');
+    setAddTripStartKm(report?.vehicle.current_odometer ? String(report.vehicle.current_odometer) : '');
+    setAddTripEndKm('');
+    setAddTripNotes('');
     setAddTripError(null);
     setIsAddTripOpen(true);
   };
@@ -562,11 +514,25 @@ export function VehicleDetailView({
   };
 
   const handleDeleteTrip = async (tripId: string) => {
-    if (confirm('Delete this trip entry?')) {
-      await dataRepo.deleteTrip(tripId);
+    try {
+      const counts = await dataRepo.getLinkedCounts('trip', tripId).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
+      let linkedText = counts.expensesCount > 0 ? ` This will also delete ${counts.expensesCount} expenses.` : '';
+      const confirmMsg = `Delete this trip?${linkedText} This cannot be undone.`;
+
+      if (!window.confirm(confirmMsg)) return;
+
+      const res = await dataRepo.deleteTrip(tripId);
+      if (res && res.deletedRows === 0) {
+        alert('Error: Trip could not be deleted (record not found).');
+        return;
+      }
+
       showSavedNotice('Trip deleted successfully!');
       await loadData();
       if (onVehicleUpdated) onVehicleUpdated();
+    } catch (err: unknown) {
+      console.error('Failed to delete trip:', err);
+      alert('Failed to delete trip: ' + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -686,11 +652,12 @@ export function VehicleDetailView({
             </span>
             <button
               type="button"
-              onClick={handleArchiveVehicle}
+              onClick={handleDeleteVehicle}
+              title="Delete vehicle"
               className="text-[11px] text-gray-400 hover:text-rose-600 flex items-center gap-1 cursor-pointer pt-1"
             >
-              <Archive className="w-3 h-3" />
-              <span>Archive</span>
+              <Trash2 className="w-3 h-3" />
+              <span>Delete</span>
             </button>
           </div>
         </div>
@@ -703,7 +670,10 @@ export function VehicleDetailView({
         action={
           <button
             type="button"
-            onClick={() => setIsEditIncomeOpen(true)}
+            onClick={() => {
+              setIncomeAmountInput(String(report?.monthlyIncome ?? 0));
+              setIsEditIncomeOpen(true);
+            }}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#22242B] hover:bg-[#2e313a] text-gray-200 text-xs font-bold rounded-full transition-colors cursor-pointer"
           >
             <Pencil className="w-3 h-3 text-[#D4F65B]" />
@@ -715,21 +685,25 @@ export function VehicleDetailView({
           {/* Big Profit or Loss Banner */}
           <div
             className={`p-4 rounded-2xl flex items-center justify-between gap-3 ${
-              isProfit
+              profitOrLoss === 0
+                ? 'bg-gray-900 border border-gray-700 text-gray-200'
+                : isProfit
                 ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-400'
                 : 'bg-rose-950/70 border border-rose-500/40 text-rose-400'
             }`}
           >
             <div>
               <p className="text-xs uppercase tracking-wider font-extrabold text-gray-400">
-                Net Result ({isProfit ? 'PROFIT' : 'LOSS'})
+                Net Result {profitOrLoss === 0 ? '(ZERO / INITIAL)' : isProfit ? '(PROFIT)' : '(LOSS)'}
               </p>
               <p className="text-2xl sm:text-3xl font-black tracking-tight mt-0.5">
-                {isProfit ? '+' : '-'} ₹{Math.abs(profitOrLoss).toLocaleString()}
+                {profitOrLoss === 0 ? '₹0' : `${isProfit ? '+' : '-'} ₹${Math.abs(profitOrLoss).toLocaleString()}`}
               </p>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center shrink-0">
-              {isProfit ? (
+              {profitOrLoss === 0 ? (
+                <span className="text-xs font-black text-gray-300">₹0</span>
+              ) : isProfit ? (
                 <TrendingUp className="w-6 h-6 text-emerald-400" />
               ) : (
                 <TrendingDown className="w-6 h-6 text-rose-400" />
@@ -1113,11 +1087,12 @@ export function VehicleDetailView({
                 </label>
                 <input
                   type="number"
-                  step="100"
+                  min="0"
+                  step="any"
+                  placeholder="0"
                   value={incomeAmountInput}
                   onChange={(e) => setIncomeAmountInput(e.target.value)}
                   className="w-full h-12 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-base font-black text-[#121316] focus:outline-none focus:border-gray-400"
-                  required
                 />
               </div>
 

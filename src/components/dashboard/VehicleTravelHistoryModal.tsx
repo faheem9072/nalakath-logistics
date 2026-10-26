@@ -211,7 +211,12 @@ export function VehicleTravelHistoryModal({
                 </h4>
 
                 <div className="space-y-2.5">
-                  {historyData.history.map((item) => (
+                  {historyData.history.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-6 text-center">
+                      No trips recorded yet for this vehicle.
+                    </p>
+                  ) : (
+                    historyData.history.map((item) => (
                     <div
                       key={item.tripId}
                       className="p-3.5 rounded-xl bg-white border border-slate-200 shadow-2xs space-y-2"
@@ -266,7 +271,7 @@ export function VehicleTravelHistoryModal({
                         </p>
                       )}
                     </div>
-                  ))}
+                  )))}
                 </div>
               </div>
             </>

@@ -4,6 +4,7 @@ import {
   collection,
   doc,
   setDoc,
+  deleteDoc,
   getDocs,
   onSnapshot,
   writeBatch,
@@ -75,6 +76,15 @@ export async function syncFleetToFirestore(state: FleetState): Promise<boolean> 
       batch.set(ref, {
         ...state.settings,
         synced_at: new Date().toISOString(),
+      }, { merge: true });
+    }
+
+    // 6. Sync Vehicle Incomes
+    for (const vi of (state.vehicleIncomes || [])) {
+      const ref = doc(db, 'vehicle_incomes', vi.id);
+      batch.set(ref, {
+        ...vi,
+        updated_at: vi.updated_at || new Date().toISOString(),
       }, { merge: true });
     }
 
@@ -258,6 +268,30 @@ export async function syncExpenseToFirestore(expense: {
 }
 
 /**
+ * Automatically sync a single vehicle income to Firestore in real-time
+ */
+export async function syncVehicleIncomeToFirestore(income: {
+  id: string;
+  vehicle_id: string;
+  month: string;
+  amount: number;
+  [key: string]: any;
+}): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !income?.id) return false;
+  try {
+    const ref = doc(db, 'vehicle_incomes', income.id);
+    await setDoc(ref, {
+      ...income,
+      updated_at: new Date().toISOString(),
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    console.warn('Auto-sync vehicle income to Firebase failed:', err);
+    return false;
+  }
+}
+
+/**
  * Subscribe to real-time changes from Firestore
  */
 export function subscribeToFirestore(onRemoteChange: () => void): (() => void) | null {
@@ -274,5 +308,95 @@ export function subscribeToFirestore(onRemoteChange: () => void): (() => void) |
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Permanently delete a driver document from Firestore
+ */
+export async function deleteDriverFromFirestore(driverId: string): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !driverId) return false;
+  try {
+    await deleteDoc(doc(db, 'drivers', driverId));
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete driver from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Permanently delete a vehicle document from Firestore
+ */
+export async function deleteVehicleFromFirestore(vehicleId: string): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !vehicleId) return false;
+  try {
+    await deleteDoc(doc(db, 'vehicles', vehicleId));
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete vehicle from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Permanently delete a trip document from Firestore
+ */
+export async function deleteTripFromFirestore(tripId: string): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !tripId) return false;
+  try {
+    await deleteDoc(doc(db, 'trips', tripId));
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete trip from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Permanently delete an expense document from Firestore
+ */
+export async function deleteExpenseFromFirestore(expenseId: string): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !expenseId) return false;
+  try {
+    await deleteDoc(doc(db, 'expenses', expenseId));
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete expense from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Permanently delete a company document from Firestore (if present)
+ */
+export async function deleteCompanyFromFirestore(companyId: string): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || !companyId) return false;
+  try {
+    await deleteDoc(doc(db, 'companies', companyId));
+    return true;
+  } catch (err) {
+    console.warn('Failed to delete company from Firestore:', err);
+    return false;
+  }
+}
+
+/**
+ * Batch delete multiple documents across collections from Firestore
+ */
+export async function batchDeleteFromFirestore(
+  items: { collection: string; id: string }[]
+): Promise<boolean> {
+  if (!isFirebaseConfigured || !db || items.length === 0) return false;
+  try {
+    const batch = writeBatch(db);
+    for (const item of items) {
+      batch.delete(doc(db, item.collection, item.id));
+    }
+    await batch.commit();
+    return true;
+  } catch (err) {
+    console.warn('Batch delete from Firestore failed:', err);
+    return false;
   }
 }

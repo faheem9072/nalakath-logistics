@@ -6,11 +6,8 @@ import {
   INITIAL_PROFILES,
   INITIAL_VEHICLES,
   INITIAL_DRIVERS,
-  INITIAL_EXPENSES,
   INITIAL_TEAMS,
   INITIAL_ROUTES,
-  INITIAL_ASSIGNMENTS,
-  INITIAL_TRIPS,
   getTodayDateString,
 } from '../mock/mock-store';
 import {
@@ -225,6 +222,7 @@ class FleetDatabase {
     if (dbPath !== ':memory:') {
       try {
         this.db.exec('PRAGMA journal_mode = WAL;');
+        this.db.exec('PRAGMA synchronous = NORMAL;');
       } catch {}
     }
     this.db.exec('PRAGMA foreign_keys = ON;');
@@ -390,6 +388,18 @@ class FleetDatabase {
       CREATE INDEX IF NOT EXISTS idx_expenses_driver ON expenses(driver_id);
       CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date);
       CREATE INDEX IF NOT EXISTS idx_assignments_date ON assignments(duty_date);
+
+      -- Strict Concurrency Guards: Ensure a driver or vehicle can NEVER have multiple active trips simultaneously
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_active_trip_driver ON trips(driver_id) WHERE status = 'in_progress';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_active_trip_vehicle ON trips(vehicle_id) WHERE status = 'in_progress';
+
+      -- Permanently remove any legacy archived records and clean orphaned relations
+      DELETE FROM expenses WHERE vehicle_id IN (SELECT id FROM vehicles WHERE is_active = 0) OR driver_id IN (SELECT id FROM drivers WHERE is_active = 0);
+      DELETE FROM trips WHERE vehicle_id IN (SELECT id FROM vehicles WHERE is_active = 0) OR driver_id IN (SELECT id FROM drivers WHERE is_active = 0);
+      DELETE FROM vehicle_incomes WHERE vehicle_id IN (SELECT id FROM vehicles WHERE is_active = 0);
+      DELETE FROM vehicles WHERE is_active = 0;
+      DELETE FROM drivers WHERE is_active = 0;
+      DELETE FROM companies WHERE is_active = 0;
     `);
   }
 
@@ -467,7 +477,7 @@ class FleetDatabase {
     );
     for (const v of INITIAL_VEHICLES) {
       const compId = v.company === 'Shadowfax' ? 'comp-shadowfax' : 'comp-delhivery';
-      const initialKm = Math.max(0, v.current_odometer - 2000);
+      const initialKm = v.current_odometer || 0;
       insertVehicle.run(
         v.id,
         v.registration_number,
@@ -475,8 +485,8 @@ class FleetDatabase {
         compId,
         v.vehicle_type || 'truck',
         initialKm,
-        v.current_odometer,
-        v.route_location || 'Ad-hoc',
+        initialKm,
+        v.is_adhoc ? 'Ad-hoc' : null,
         v.is_adhoc ? 1 : 0,
         JSON.stringify(v.default_driver_names || []),
         JSON.stringify(v.default_driver_ids || []),
@@ -485,106 +495,8 @@ class FleetDatabase {
         now
       );
     }
-
-    // 7. Incomes
-    const insertIncome = this.db.prepare(
-      'INSERT INTO vehicle_incomes (id, vehicle_id, month, amount, updated_at) VALUES (?, ?, ?, ?, ?)'
-    );
-    for (const v of INITIAL_VEHICLES) {
-      const amt = v.company === 'Shadowfax' ? 55000 : 52000;
-      insertIncome.run(`${v.id}_2026-10`, v.id, '2026-10', amt, now);
-    }
-
-    // 8. Assignments
-    const insertAssignment = this.db.prepare(`
-      INSERT INTO assignments (
-        id, duty_date, driver_id, vehicle_id, route_id, team_id,
-        planned_start_time, planned_end_time, status, driver_confirmed_at,
-        notes, created_by, updated_by, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    for (const a of INITIAL_ASSIGNMENTS) {
-      insertAssignment.run(
-        a.id,
-        a.duty_date,
-        a.driver_id,
-        a.vehicle_id,
-        a.route_id || null,
-        a.team_id || null,
-        a.planned_start_time || '08:00',
-        a.planned_end_time || '18:00',
-        a.status || 'scheduled',
-        a.driver_confirmed_at || null,
-        a.notes || null,
-        a.created_by || 'owner',
-        null,
-        now,
-        now
-      );
-    }
-
-    // 9. Seed Sample Trips
-    const insertTrip = this.db.prepare(`
-      INSERT INTO trips (
-        id, assignment_id, trip_number, driver_id, vehicle_id, status, start_time, end_time,
-        start_odometer, end_odometer, destination, route_name, start_location, end_location,
-        driver_notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    const locCalicut = JSON.stringify({ latitude: 11.2588, longitude: 75.7804, address: 'Calicut Central Hub, Kozhikode' });
-    const locMukkam = JSON.stringify({ latitude: 11.3198, longitude: 75.9922, address: 'Mukkam Distribution Terminal' });
-    const locKoyilandy = JSON.stringify({ latitude: 11.4367, longitude: 75.6961, address: 'Koyilandy Hub' });
-    const locThrissur = JSON.stringify({ latitude: 10.5276, longitude: 76.2144, address: 'Thrissur Logistics Park' });
-
-    for (const t of INITIAL_TRIPS) {
-      const assign = INITIAL_ASSIGNMENTS.find((a) => a.id === t.assignment_id);
-      const drvId = t.driver_id || assign?.driver_id || 'drv-refnise';
-      const vehId = t.vehicle_id || assign?.vehicle_id || 'veh-del-3057';
-      const isTodayInitial = t.id === 'trip-today-3057';
-      insertTrip.run(
-        t.id,
-        t.assignment_id || null,
-        t.trip_number || 1,
-        drvId,
-        vehId,
-        isTodayInitial ? 'completed' : (t.status || 'completed'),
-        t.start_time,
-        isTodayInitial ? new Date(Date.now() - 12 * 3600000).toISOString() : (t.end_time || null),
-        t.start_odometer,
-        isTodayInitial ? 54930 : (t.end_odometer || null),
-        t.actual_destination || t.destination || null,
-        t.route_name || null,
-        t.start_location ? JSON.stringify(t.start_location) : null,
-        t.end_location ? JSON.stringify(t.end_location) : null,
-        t.driver_notes || null,
-        now,
-        now
-      );
-    }
-
-    // 10. Seed Expenses
-    const insertExp = this.db.prepare(`
-      INSERT INTO expenses (
-        id, trip_id, vehicle_id, driver_id, expense_type, amount, litres, note, date, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    for (const exp of INITIAL_EXPENSES) {
-      insertExp.run(
-        exp.id,
-        null,
-        exp.vehicle_id,
-        exp.driver_id,
-        exp.expense_type,
-        exp.amount,
-        exp.litres || null,
-        exp.note || null,
-        exp.date,
-        now,
-        now
-      );
-    }
+    // Note: No dummy trips, expenses, vehicle incomes, or assignments are seeded.
+    // Dashboard and calculations start at zero for real operations.
   }
 
   // =========================================================================
@@ -911,32 +823,46 @@ class FleetDatabase {
       locPayload = JSON.stringify({ no_location: true });
     }
 
-    this.db.prepare(`
-      INSERT INTO trips (
-        id, assignment_id, trip_number, driver_id, vehicle_id, status, start_time,
-        start_odometer, destination, route_name, driver_notes, start_location, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, 'in_progress', ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      tripId,
-      data.assignmentId || null,
-      tripNumber,
-      dId,
-      vId,
-      now,
-      startingKm,
-      dest,
-      rName,
-      notes,
-      locPayload,
-      now,
-      now
-    );
+    this.db.exec('BEGIN IMMEDIATE;');
+    try {
+      this.db.prepare(`
+        INSERT INTO trips (
+          id, assignment_id, trip_number, driver_id, vehicle_id, status, start_time,
+          start_odometer, destination, route_name, driver_notes, start_location, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 'in_progress', ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        tripId,
+        data.assignmentId || null,
+        tripNumber,
+        dId,
+        vId,
+        now,
+        startingKm,
+        dest,
+        rName,
+        notes,
+        locPayload,
+        now,
+        now
+      );
 
-    this.db.prepare('UPDATE vehicles SET current_odometer = MAX(current_odometer, ?), updated_at = ? WHERE id = ?').run(
-      startingKm,
-      now,
-      vId
-    );
+      this.db.prepare('UPDATE vehicles SET current_odometer = MAX(current_odometer, ?), updated_at = ? WHERE id = ?').run(
+        startingKm,
+        now,
+        vId
+      );
+
+      this.db.exec('COMMIT;');
+    } catch (err: any) {
+      try { this.db.exec('ROLLBACK;'); } catch {}
+      if (err?.message?.includes('idx_active_trip_vehicle') || err?.message?.includes('trips.vehicle_id')) {
+        throw new Error('Vehicle is currently in use by another driver. Please choose another vehicle.');
+      }
+      if (err?.message?.includes('idx_active_trip_driver') || err?.message?.includes('trips.driver_id')) {
+        throw new Error('You already have an active trip in progress. Please complete it first.');
+      }
+      throw err;
+    }
 
     fleetEvents.emit('change', { timestamp: Date.now() });
     const rec = this.db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as any;
@@ -974,59 +900,67 @@ class FleetDatabase {
       endLocPayload = JSON.stringify({ no_location: true });
     }
 
-    this.db.prepare(`
-      UPDATE trips
-      SET end_time = ?,
-          end_odometer = ?,
-          status = 'completed',
-          end_location = ?,
-          driver_notes = ?,
-          updated_at = ?
-      WHERE id = ?
-    `).run(
-      now,
-      endOdometer,
-      endLocPayload,
-      (notes || trip.driver_notes) ?? null,
-      now,
-      tripId
-    );
+    this.db.exec('BEGIN IMMEDIATE;');
+    try {
+      this.db.prepare(`
+        UPDATE trips
+        SET end_time = ?,
+            end_odometer = ?,
+            status = 'completed',
+            end_location = ?,
+            driver_notes = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        now,
+        endOdometer,
+        endLocPayload,
+        (notes || trip.driver_notes) ?? null,
+        now,
+        tripId
+      );
 
-    this.db.prepare('UPDATE vehicles SET current_odometer = MAX(current_odometer, ?), updated_at = ? WHERE id = ?').run(
-      endOdometer,
-      now,
-      trip.vehicle_id
-    );
+      this.db.prepare('UPDATE vehicles SET current_odometer = MAX(current_odometer, ?), updated_at = ? WHERE id = ?').run(
+        endOdometer,
+        now,
+        trip.vehicle_id
+      );
 
-    if (trip.assignment_id && isFinalTripOfDuty !== false) {
-      this.db.prepare("UPDATE assignments SET status = 'completed', updated_at = ? WHERE id = ?").run(now, trip.assignment_id);
-    }
-
-    if (expenses && expenses.length > 0) {
-      const expDate = now.slice(0, 10);
-      const insertExp = this.db.prepare(`
-        INSERT INTO expenses (
-          id, trip_id, vehicle_id, driver_id, expense_type, amount, litres, note, date, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-
-      for (const e of expenses) {
-        if (!e.amount || e.amount <= 0) continue;
-        const expId = `exp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        insertExp.run(
-          expId,
-          tripId,
-          trip.vehicle_id,
-          trip.driver_id,
-          e.expense_type,
-          e.amount,
-          e.litres || null,
-          e.note || null,
-          expDate,
-          now,
-          now
-        );
+      if (trip.assignment_id && isFinalTripOfDuty !== false) {
+        this.db.prepare("UPDATE assignments SET status = 'completed', updated_at = ? WHERE id = ?").run(now, trip.assignment_id);
       }
+
+      if (expenses && expenses.length > 0) {
+        const expDate = now.slice(0, 10);
+        const insertExp = this.db.prepare(`
+          INSERT INTO expenses (
+            id, trip_id, vehicle_id, driver_id, expense_type, amount, litres, note, date, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const e of expenses) {
+          if (!e.amount || e.amount <= 0) continue;
+          const expId = `exp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+          insertExp.run(
+            expId,
+            tripId,
+            trip.vehicle_id,
+            trip.driver_id,
+            e.expense_type,
+            e.amount,
+            e.litres || null,
+            e.note || null,
+            expDate,
+            now,
+            now
+          );
+        }
+      }
+
+      this.db.exec('COMMIT;');
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;'); } catch {}
+      throw err;
     }
 
     fleetEvents.emit('change', { timestamp: Date.now() });
@@ -1114,10 +1048,10 @@ class FleetDatabase {
     return this.db.prepare('SELECT * FROM expenses WHERE id = ?').get(id) as unknown as ExpenseRecord;
   }
 
-  public deleteExpense(id: string): boolean {
-    this.db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
+  public deleteExpense(id: string): { success: boolean; deletedRows: number } {
+    const info = this.db.prepare('DELETE FROM expenses WHERE id = ?').run(id);
     fleetEvents.emit('change', { timestamp: Date.now() });
-    return true;
+    return { success: Number(info.changes) > 0, deletedRows: Number(info.changes) };
   }
 
   // =========================================================================
@@ -1237,11 +1171,48 @@ class FleetDatabase {
     return this.db.prepare('SELECT * FROM trips WHERE id = ?').get(tripId) as unknown as TripRecord;
   }
 
-  public deleteTrip(id: string): boolean {
-    this.db.prepare('DELETE FROM expenses WHERE trip_id = ?').run(id);
-    this.db.prepare('DELETE FROM trips WHERE id = ?').run(id);
-    fleetEvents.emit('change', { timestamp: Date.now() });
-    return true;
+  public getLinkedCounts(type: 'driver' | 'vehicle' | 'company' | 'trip', id: string): { tripsCount: number; expensesCount: number; vehiclesCount?: number } {
+    if (type === 'driver') {
+      const tripsRow = this.db.prepare('SELECT count(*) as c FROM trips WHERE driver_id = ?').get(id) as { c: number } | undefined;
+      const expRow = this.db.prepare('SELECT count(*) as c FROM expenses WHERE driver_id = ?').get(id) as { c: number } | undefined;
+      return { tripsCount: tripsRow?.c || 0, expensesCount: expRow?.c || 0 };
+    }
+    if (type === 'vehicle') {
+      const tripsRow = this.db.prepare('SELECT count(*) as c FROM trips WHERE vehicle_id = ?').get(id) as { c: number } | undefined;
+      const expRow = this.db.prepare('SELECT count(*) as c FROM expenses WHERE vehicle_id = ?').get(id) as { c: number } | undefined;
+      return { tripsCount: tripsRow?.c || 0, expensesCount: expRow?.c || 0 };
+    }
+    if (type === 'company') {
+      const vehRow = this.db.prepare('SELECT count(*) as c FROM vehicles WHERE company_id = ?').get(id) as { c: number } | undefined;
+      const tripsRow = this.db.prepare('SELECT count(*) as c FROM trips WHERE vehicle_id IN (SELECT id FROM vehicles WHERE company_id = ?)').get(id) as { c: number } | undefined;
+      const expRow = this.db.prepare('SELECT count(*) as c FROM expenses WHERE vehicle_id IN (SELECT id FROM vehicles WHERE company_id = ?)').get(id) as { c: number } | undefined;
+      return {
+        vehiclesCount: vehRow?.c || 0,
+        tripsCount: tripsRow?.c || 0,
+        expensesCount: expRow?.c || 0,
+      };
+    }
+    if (type === 'trip') {
+      const expRow = this.db.prepare('SELECT count(*) as c FROM expenses WHERE trip_id = ?').get(id) as { c: number } | undefined;
+      return { tripsCount: 0, expensesCount: expRow?.c || 0 };
+    }
+    return { tripsCount: 0, expensesCount: 0 };
+  }
+
+  public deleteTrip(id: string): { success: boolean; deletedRows: number; deletedExpenseIds: string[] } {
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      const expenseRows = this.db.prepare('SELECT id FROM expenses WHERE trip_id = ?').all(id) as unknown as { id: string }[];
+      const deletedExpenseIds = expenseRows.map((e) => e.id);
+      this.db.prepare('DELETE FROM expenses WHERE trip_id = ?').run(id);
+      const tripInfo = this.db.prepare('DELETE FROM trips WHERE id = ?').run(id);
+      this.db.exec('COMMIT;');
+      fleetEvents.emit('change', { timestamp: Date.now() });
+      return { success: Number(tripInfo.changes) > 0, deletedRows: Number(tripInfo.changes), deletedExpenseIds };
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;'); } catch {}
+      throw err;
+    }
   }
 
   // =========================================================================
@@ -1392,10 +1363,49 @@ class FleetDatabase {
     return this.allowDriverOverride(driverId, enabled);
   }
 
-  public archiveDriver(id: string): boolean {
-    this.db.prepare('UPDATE drivers SET is_active = 0, updated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
-    fleetEvents.emit('change', { timestamp: Date.now() });
-    return true;
+  public archiveDriver(id: string): { success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] } {
+    return this.deleteDriver(id);
+  }
+
+  public deleteDriver(id: string): { success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] } {
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      const tripRows = this.db.prepare('SELECT id FROM trips WHERE driver_id = ?').all(id) as unknown as { id: string }[];
+      const deletedTripIds = tripRows.map((t) => t.id);
+
+      const expenseRows = this.db.prepare(
+        deletedTripIds.length > 0
+          ? `SELECT id FROM expenses WHERE driver_id = ? OR trip_id IN (${deletedTripIds.map(() => '?').join(',')})`
+          : 'SELECT id FROM expenses WHERE driver_id = ?'
+      ).all(...(deletedTripIds.length > 0 ? [id, ...deletedTripIds] : [id])) as unknown as { id: string }[];
+      const deletedExpenseIds = expenseRows.map((e) => e.id);
+
+      if (deletedExpenseIds.length > 0) {
+        this.db.prepare(
+          `DELETE FROM expenses WHERE id IN (${deletedExpenseIds.map(() => '?').join(',')})`
+        ).run(...deletedExpenseIds);
+      }
+
+      if (deletedTripIds.length > 0) {
+        this.db.prepare(
+          `DELETE FROM trips WHERE id IN (${deletedTripIds.map(() => '?').join(',')})`
+        ).run(...deletedTripIds);
+      }
+
+      this.db.prepare(
+        'DELETE FROM assignment_events WHERE assignment_id IN (SELECT id FROM assignments WHERE driver_id = ?)'
+      ).run(id);
+      this.db.prepare('DELETE FROM assignments WHERE driver_id = ?').run(id);
+
+      const drvInfo = this.db.prepare('DELETE FROM drivers WHERE id = ?').run(id);
+
+      this.db.exec('COMMIT;');
+      fleetEvents.emit('change', { timestamp: Date.now() });
+      return { success: Number(drvInfo.changes) > 0, deletedRows: Number(drvInfo.changes), deletedTripIds, deletedExpenseIds };
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;'); } catch {}
+      throw err;
+    }
   }
 
   // =========================================================================
@@ -1483,10 +1493,51 @@ class FleetDatabase {
     return formatVehicle(v, comp?.name || 'Direct') as any;
   }
 
-  public archiveVehicle(id: string): boolean {
-    this.db.prepare('UPDATE vehicles SET is_active = 0, updated_at = ? WHERE id = ?').run(new Date().toISOString(), id);
-    fleetEvents.emit('change', { timestamp: Date.now() });
-    return true;
+  public archiveVehicle(id: string): { success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] } {
+    return this.deleteVehicle(id);
+  }
+
+  public deleteVehicle(id: string): { success: boolean; deletedRows: number; deletedTripIds: string[]; deletedExpenseIds: string[] } {
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      const tripRows = this.db.prepare('SELECT id FROM trips WHERE vehicle_id = ?').all(id) as unknown as { id: string }[];
+      const deletedTripIds = tripRows.map((t) => t.id);
+
+      const expenseRows = this.db.prepare(
+        deletedTripIds.length > 0
+          ? `SELECT id FROM expenses WHERE vehicle_id = ? OR trip_id IN (${deletedTripIds.map(() => '?').join(',')})`
+          : 'SELECT id FROM expenses WHERE vehicle_id = ?'
+      ).all(...(deletedTripIds.length > 0 ? [id, ...deletedTripIds] : [id])) as unknown as { id: string }[];
+      const deletedExpenseIds = expenseRows.map((e) => e.id);
+
+      if (deletedExpenseIds.length > 0) {
+        this.db.prepare(
+          `DELETE FROM expenses WHERE id IN (${deletedExpenseIds.map(() => '?').join(',')})`
+        ).run(...deletedExpenseIds);
+      }
+
+      if (deletedTripIds.length > 0) {
+        this.db.prepare(
+          `DELETE FROM trips WHERE id IN (${deletedTripIds.map(() => '?').join(',')})`
+        ).run(...deletedTripIds);
+      }
+
+      this.db.prepare('DELETE FROM vehicle_incomes WHERE vehicle_id = ?').run(id);
+
+      this.db.prepare(
+        'DELETE FROM assignment_events WHERE assignment_id IN (SELECT id FROM assignments WHERE vehicle_id = ?)'
+      ).run(id);
+      this.db.prepare('DELETE FROM assignments WHERE vehicle_id = ?').run(id);
+
+      const vehInfo = this.db.prepare('DELETE FROM vehicles WHERE id = ?').run(id);
+
+      this.db.exec('COMMIT;');
+      fleetEvents.emit('change', { timestamp: Date.now() });
+      return { success: Number(vehInfo.changes) > 0, deletedRows: Number(vehInfo.changes), deletedTripIds, deletedExpenseIds };
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;'); } catch {}
+      throw err;
+    }
   }
 
   public getVehicle(id: string): VehicleRecord | undefined {
@@ -1564,11 +1615,35 @@ class FleetDatabase {
     return this.db.prepare('SELECT * FROM companies WHERE id = ?').get(id) as unknown as CompanyRecord;
   }
 
-  public updateCompany(id: string, data: { name?: string; contactPerson?: string; contactPhone?: string; isActive?: boolean }): CompanyRecord {
+  public updateCompany(id: string, data: {
+    name?: string;
+    contactPerson?: string;
+    contact_person?: string;
+    contactPhone?: string;
+    contact_phone?: string;
+    isActive?: boolean;
+    is_active?: boolean;
+  }): CompanyRecord {
     const current = this.db.prepare('SELECT * FROM companies WHERE id = ?').get(id) as unknown as CompanyRecord | undefined;
     if (!current) throw new Error('Company not found');
 
     const now = new Date().toISOString();
+    const newName = data.name?.trim() || current.name;
+    const contactPerson = data.contactPerson !== undefined
+      ? data.contactPerson
+      : data.contact_person !== undefined
+      ? data.contact_person
+      : current.contact_person;
+    const contactPhone = data.contactPhone !== undefined
+      ? data.contactPhone
+      : data.contact_phone !== undefined
+      ? data.contact_phone
+      : current.contact_phone;
+    const isActive = data.isActive !== undefined
+      ? (data.isActive ? 1 : 0)
+      : data.is_active !== undefined
+      ? (data.is_active ? 1 : 0)
+      : current.is_active;
 
     this.db.prepare(`
       UPDATE companies
@@ -1579,16 +1654,78 @@ class FleetDatabase {
           updated_at = ?
       WHERE id = ?
     `).run(
-      data.name?.trim() || current.name,
-      (data.contactPerson !== undefined ? data.contactPerson : current.contact_person) ?? null,
-      (data.contactPhone !== undefined ? data.contactPhone : current.contact_phone) ?? null,
-      data.isActive !== undefined ? (data.isActive ? 1 : 0) : current.is_active,
+      newName,
+      contactPerson ?? null,
+      contactPhone ?? null,
+      isActive,
       now,
       id
     );
 
     fleetEvents.emit('change', { timestamp: Date.now() });
     return this.db.prepare('SELECT * FROM companies WHERE id = ?').get(id) as unknown as CompanyRecord;
+  }
+
+  public deleteCompany(id: string): { success: boolean; deletedRows: number; deletedVehicleIds: string[]; deletedTripIds: string[]; deletedExpenseIds: string[] } {
+    this.db.exec('BEGIN TRANSACTION;');
+    try {
+      const vehicleRows = this.db.prepare('SELECT id FROM vehicles WHERE company_id = ?').all(id) as unknown as { id: string }[];
+      const deletedVehicleIds = vehicleRows.map((v) => v.id);
+
+      let deletedTripIds: string[] = [];
+      let deletedExpenseIds: string[] = [];
+
+      if (deletedVehicleIds.length > 0) {
+        const tripRows = this.db.prepare(
+          `SELECT id FROM trips WHERE vehicle_id IN (${deletedVehicleIds.map(() => '?').join(',')})`
+        ).all(...deletedVehicleIds) as unknown as { id: string }[];
+        deletedTripIds = tripRows.map((t) => t.id);
+
+        const expenseRows = this.db.prepare(
+          deletedTripIds.length > 0
+            ? `SELECT id FROM expenses WHERE vehicle_id IN (${deletedVehicleIds.map(() => '?').join(',')}) OR trip_id IN (${deletedTripIds.map(() => '?').join(',')})`
+            : `SELECT id FROM expenses WHERE vehicle_id IN (${deletedVehicleIds.map(() => '?').join(',')})`
+        ).all(...(deletedTripIds.length > 0 ? [...deletedVehicleIds, ...deletedTripIds] : deletedVehicleIds)) as unknown as { id: string }[];
+        deletedExpenseIds = expenseRows.map((e) => e.id);
+
+        if (deletedExpenseIds.length > 0) {
+          this.db.prepare(
+            `DELETE FROM expenses WHERE id IN (${deletedExpenseIds.map(() => '?').join(',')})`
+          ).run(...deletedExpenseIds);
+        }
+
+        if (deletedTripIds.length > 0) {
+          this.db.prepare(
+            `DELETE FROM trips WHERE id IN (${deletedTripIds.map(() => '?').join(',')})`
+          ).run(...deletedTripIds);
+        }
+
+        this.db.prepare(
+          `DELETE FROM vehicle_incomes WHERE vehicle_id IN (${deletedVehicleIds.map(() => '?').join(',')})`
+        ).run(...deletedVehicleIds);
+
+        this.db.prepare(
+          `DELETE FROM assignment_events WHERE assignment_id IN (SELECT id FROM assignments WHERE vehicle_id IN (${deletedVehicleIds.map(() => '?').join(',')}))`
+        ).run(...deletedVehicleIds);
+
+        this.db.prepare(
+          `DELETE FROM assignments WHERE vehicle_id IN (${deletedVehicleIds.map(() => '?').join(',')})`
+        ).run(...deletedVehicleIds);
+
+        this.db.prepare(
+          `DELETE FROM vehicles WHERE id IN (${deletedVehicleIds.map(() => '?').join(',')})`
+        ).run(...deletedVehicleIds);
+      }
+
+      const compInfo = this.db.prepare('DELETE FROM companies WHERE id = ?').run(id);
+
+      this.db.exec('COMMIT;');
+      fleetEvents.emit('change', { timestamp: Date.now() });
+      return { success: Number(compInfo.changes) > 0, deletedRows: Number(compInfo.changes), deletedVehicleIds, deletedTripIds, deletedExpenseIds };
+    } catch (err) {
+      try { this.db.exec('ROLLBACK;'); } catch {}
+      throw err;
+    }
   }
 
   // =========================================================================
@@ -2097,11 +2234,11 @@ class FleetDatabase {
         driverId: t.driver_id,
         driverName: driver?.full_name || 'Driver',
         driverPhone: driver?.phone || '',
-        routeName: t.route_name || 'Direct Route',
-        destination: t.destination || endLoc?.address || 'Kerala Corridor',
+        routeName: t.route_name || t.destination || '—',
+        destination: t.destination || endLoc?.address || endLoc?.place_name || '—',
         distance: dist,
-        startPlace: t.route_name || startLoc?.address || 'Calicut Logistics Central',
-        endPlace: t.destination || endLoc?.address || 'Kerala Corridor',
+        startPlace: t.route_name || startLoc?.address || startLoc?.place_name || '—',
+        endPlace: t.destination || endLoc?.address || endLoc?.place_name || '—',
         startOdometer: t.start_odometer,
         endOdometer: t.end_odometer || null,
         startOdo: t.start_odometer,
@@ -2177,12 +2314,14 @@ class FleetDatabase {
   public setVehicleIncome(vehicleId: string, month: string, amount: number): VehicleIncomeRecord {
     const id = `${vehicleId}_${month}`;
     const now = new Date().toISOString();
+    const numAmount = typeof amount === 'number' ? amount : (parseFloat(String(amount)) || 0);
+    const validAmount = isNaN(numAmount) ? 0 : Math.max(0, numAmount);
 
     this.db.prepare(`
       INSERT INTO vehicle_incomes (id, vehicle_id, month, amount, updated_at)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(vehicle_id, month) DO UPDATE SET amount = excluded.amount, updated_at = excluded.updated_at
-    `).run(id, vehicleId, month, amount, now);
+    `).run(id, vehicleId, month, validAmount, now);
 
     fleetEvents.emit('change', { timestamp: Date.now() });
     return this.db.prepare('SELECT * FROM vehicle_incomes WHERE id = ?').get(id) as unknown as VehicleIncomeRecord;
@@ -2231,6 +2370,10 @@ class FleetDatabase {
       return true;
     }
     throw new Error('Invalid owner password');
+  }
+
+  public verifyOwnerPassword(password: string): boolean {
+    return this.loginOwner(password);
   }
 }
 
