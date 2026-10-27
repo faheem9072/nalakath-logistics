@@ -29,6 +29,8 @@ interface VehicleWithStatus extends Vehicle {
     startOdo: number;
     startTime: string;
   } | null;
+  company_name?: string;
+  syncStatus?: 'saving' | 'saved';
 }
 
 export function VehiclesListView() {
@@ -40,7 +42,7 @@ export function VehiclesListView() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Keep a ref of raw vehicles for active trip updates
-  const rawVehiclesRef = useRef<Vehicle[]>([]);
+  const rawVehiclesRef = useRef<VehicleWithStatus[]>([]);
 
   // Add Vehicle Modal
   const [isAddVehicleOpen, setIsAddVehicleOpen] = useState(false);
@@ -72,7 +74,7 @@ export function VehiclesListView() {
     setTimeout(() => setSavedNotice(null), 3500);
   };
 
-  const enhanceVehicles = (list: Vehicle[]): VehicleWithStatus[] => {
+  const enhanceVehicles = (list: VehicleWithStatus[]): VehicleWithStatus[] => {
     return list.map((v) => {
       const live = dataRepo.getActiveTripForVehicle(v.id);
       if (live) {
@@ -96,8 +98,8 @@ export function VehiclesListView() {
   const loadVehiclesData = async () => {
     try {
       const allVehicles = await dataRepo.getVehicles();
-      rawVehiclesRef.current = allVehicles;
-      setVehicles(enhanceVehicles(allVehicles));
+      rawVehiclesRef.current = allVehicles as VehicleWithStatus[];
+      setVehicles(enhanceVehicles(allVehicles as VehicleWithStatus[]));
     } catch (err) {
       console.error('Failed to load vehicles from repo:', err);
     } finally {
@@ -118,6 +120,7 @@ export function VehiclesListView() {
 
   const handleAddVehicle = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingAdd) return;
     setAddError(null);
     if (!regNo.trim() || !makeModel.trim()) {
       setAddError('Registration number and vehicle model are required');
@@ -125,11 +128,42 @@ export function VehiclesListView() {
     }
 
     setIsSubmittingAdd(true);
-    try {
-      const cleanReg = regNo.trim().toUpperCase();
-      const odoVal = parseFloat(odometer) || 0;
 
-      await dataRepo.createVehicle({
+    const cleanReg = regNo.trim().toUpperCase();
+    const odoVal = parseFloat(odometer) || 0;
+    const tempId = `veh-${Date.now()}`;
+
+    const optimisticVeh: VehicleWithStatus = {
+      id: tempId,
+      registration_number: cleanReg,
+      make_model: makeModel.trim(),
+      company,
+      company_name: company,
+      route_location: routeLocation.trim() || '',
+      vehicle_type: vehicleType,
+      capacity: 2,
+      initial_km: odoVal,
+      current_odometer: odoVal,
+      status: 'active',
+      is_active: true,
+      notes: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      syncStatus: 'saving',
+    };
+
+    // 1. Instantly display on screen (0ms)
+    rawVehiclesRef.current = [optimisticVeh, ...rawVehiclesRef.current];
+    setVehicles(enhanceVehicles(rawVehiclesRef.current));
+    setIsAddVehicleOpen(false);
+    setRegNo('');
+    setMakeModel('');
+    setRouteLocation('');
+    setOdometer('0');
+    setIsSubmittingAdd(false);
+
+    try {
+      const realVeh = await dataRepo.createVehicle({
         registration_number: cleanReg,
         make_model: makeModel.trim(),
         company,
@@ -142,18 +176,26 @@ export function VehiclesListView() {
         notes: null,
       });
 
-      setIsAddVehicleOpen(false);
-      setRegNo('');
-      setMakeModel('');
-      setRouteLocation('');
-      setOdometer('0');
+      rawVehiclesRef.current = rawVehiclesRef.current.map((v) =>
+        v.id === tempId ? { ...v, ...realVeh, syncStatus: 'saved' } : v
+      );
+      setVehicles(enhanceVehicles(rawVehiclesRef.current));
       showSavedNotice('New vehicle added successfully!');
-      await loadVehiclesData();
+
+      setTimeout(() => {
+        rawVehiclesRef.current = rawVehiclesRef.current.map((v) =>
+          v.id === realVeh.id ? { ...v, syncStatus: undefined } : v
+        );
+        setVehicles(enhanceVehicles(rawVehiclesRef.current));
+      }, 2500);
     } catch (err: unknown) {
       console.error('Failed to add vehicle:', err);
-      setAddError(err instanceof Error ? err.message : 'Failed to add vehicle');
-    } finally {
-      setIsSubmittingAdd(false);
+      // Rollback
+      rawVehiclesRef.current = rawVehiclesRef.current.filter((v) => v.id !== tempId);
+      setVehicles(enhanceVehicles(rawVehiclesRef.current));
+      const msg = err instanceof Error ? err.message : 'Failed to add vehicle';
+      showSavedNotice(msg);
+      alert(msg);
     }
   };
 
@@ -173,7 +215,7 @@ export function VehiclesListView() {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingVehicle) return;
+    if (!editingVehicle || isSubmittingEdit) return;
     setEditError(null);
     setIsSubmittingEdit(true);
 
@@ -183,7 +225,31 @@ export function VehiclesListView() {
     const cleanLocation = editRouteLocation.trim();
     const initialKmVal = parseFloat(editInitialKm) || 0;
     const currentOdoVal = parseFloat(editOdo) || editingVehicle.current_odometer;
-    const nowIso = new Date().toISOString();
+
+    const previousVeh = rawVehiclesRef.current.find((v) => v.id === docId);
+
+    // 1. Instantly display changes on screen (0ms)
+    rawVehiclesRef.current = rawVehiclesRef.current.map((v) =>
+      v.id === docId
+        ? {
+            ...v,
+            registration_number: cleanReg,
+            make_model: cleanModel,
+            company: editCompany,
+            company_name: editCompany,
+            route_location: cleanLocation,
+            vehicle_type: editType,
+            initial_km: initialKmVal,
+            current_odometer: currentOdoVal,
+            is_active: editIsActive,
+            status: editIsActive ? 'active' : 'inactive',
+            syncStatus: 'saving',
+          }
+        : v
+    );
+    setVehicles(enhanceVehicles(rawVehiclesRef.current));
+    setEditingVehicle(null);
+    setIsSubmittingEdit(false);
 
     try {
       await dataRepo.updateVehicle(docId, {
@@ -197,34 +263,30 @@ export function VehiclesListView() {
         is_active: editIsActive,
       });
 
-      setVehicles((prev) =>
-        prev.map((v) =>
-          v.id === docId
-            ? {
-                ...v,
-                registration_number: cleanReg,
-                make_model: cleanModel,
-                company: editCompany,
-                company_name: editCompany,
-                route_location: cleanLocation,
-                vehicle_type: editType,
-                initial_km: initialKmVal,
-                current_odometer: currentOdoVal,
-                is_active: editIsActive,
-                status: editIsActive ? 'active' : 'inactive',
-              }
-            : v
-        )
+      rawVehiclesRef.current = rawVehiclesRef.current.map((v) =>
+        v.id === docId ? { ...v, syncStatus: 'saved' } : v
       );
-
-      setEditingVehicle(null);
+      setVehicles(enhanceVehicles(rawVehiclesRef.current));
       showSavedNotice('Vehicle details saved!');
-      await loadVehiclesData();
+
+      setTimeout(() => {
+        rawVehiclesRef.current = rawVehiclesRef.current.map((v) =>
+          v.id === docId ? { ...v, syncStatus: undefined } : v
+        );
+        setVehicles(enhanceVehicles(rawVehiclesRef.current));
+      }, 2500);
     } catch (err: unknown) {
       console.error('Failed to save vehicle:', err);
-      setEditError(err instanceof Error ? err.message : 'Failed to update vehicle');
-    } finally {
-      setIsSubmittingEdit(false);
+      // Rollback
+      if (previousVeh) {
+        rawVehiclesRef.current = rawVehiclesRef.current.map((v) =>
+          v.id === docId ? { ...previousVeh, syncStatus: undefined } : v
+        );
+        setVehicles(enhanceVehicles(rawVehiclesRef.current));
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to update vehicle';
+      showSavedNotice(msg);
+      alert(msg);
     }
   };
 
@@ -363,6 +425,16 @@ export function VehiclesListView() {
                       <h3 className="font-extrabold text-[#121316] text-sm sm:text-base tracking-tight truncate">
                         {v.registration_number}
                       </h3>
+                      {v.syncStatus === 'saving' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse shrink-0">
+                          Saving...
+                        </span>
+                      )}
+                      {v.syncStatus === 'saved' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                          Saved
+                        </span>
+                      )}
                       <span className="px-2 py-0.2 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700">
                         {v.company || 'Delhivery'}
                       </span>

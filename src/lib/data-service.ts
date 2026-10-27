@@ -160,10 +160,20 @@ class ServerFleetRepository {
         this.sessionDriverId = null;
       }
 
-      // Initial fetch and start live sync polling (10s interval fallback, pauses on hidden tab)
+      // Initial fetch and start live sync polling (60s fallback interval, active only when tab is visible)
       this.refresh();
       this.initRealtimeStream();
-      this.pollTimer = setInterval(() => this.refresh(), 10000);
+      this.pollTimer = setInterval(() => {
+        if (typeof document !== 'undefined' && !document.hidden) {
+          this.refresh();
+        }
+      }, 60000);
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+          this.refresh();
+        }
+      });
     }
   }
 
@@ -176,11 +186,15 @@ class ServerFleetRepository {
       }
 
       this.eventSource = new EventSource('/api/fleet/stream');
+      let syncDebounce: any = null;
       this.eventSource.addEventListener('sync', () => {
-        this.refresh();
+        if (syncDebounce) clearTimeout(syncDebounce);
+        syncDebounce = setTimeout(() => {
+          this.refresh();
+        }, 1500);
       });
       this.eventSource.onerror = () => {
-        // Will auto reconnect in standard EventSource; 10s polling acts as fallback
+        // Will auto reconnect in standard EventSource; 60s polling acts as fallback
       };
     } catch (err) {
       console.warn('Realtime SSE stream setup error (will rely on polling):', err);
@@ -323,8 +337,6 @@ class ServerFleetRepository {
         throw new Error(data.error || `Action ${action} failed`);
       }
 
-      // Non-blocking background sync so user UI never lags waiting for 7 collections
-      this.refresh().catch(() => {});
       return data;
     } catch (err: unknown) {
       if (err instanceof Error) {
@@ -367,12 +379,12 @@ class ServerFleetRepository {
     if (typeof window !== 'undefined') {
       localStorage.setItem('fleet_session_role', 'driver');
       localStorage.setItem('fleet_session_driver_id', data.driver.id);
+      localStorage.setItem('fleet_driver_profile', JSON.stringify(data.driver));
       localStorage.removeItem('fleet_owner_auth');
     }
-    await this.refresh();
-    const drivers = await this.getDrivers();
-    const d = drivers.find((drv) => drv.id === data.driver.id) || data.driver;
-    return { ...d, role: 'driver' };
+    // Non-blocking background sync so driver portal opens immediately
+    this.refresh().catch(() => {});
+    return { ...data.driver, role: 'driver' };
   }
 
   public async loginByPhone(phone: string, pin: string = '1234'): Promise<Driver> {
@@ -426,7 +438,8 @@ class ServerFleetRepository {
       localStorage.setItem('fleet_owner_auth', 'authenticated');
       localStorage.removeItem('fleet_session_driver_id');
     }
-    await this.refresh();
+    // Background sync without blocking navigation
+    this.refresh().catch(() => {});
     return true;
   }
 
@@ -474,6 +487,25 @@ class ServerFleetRepository {
       const isOwnerAuth = localStorage.getItem('fleet_owner_auth') === 'authenticated';
 
       if (savedRole === 'driver' && savedDriverId) {
+        // Fast instant return from cached driver profile
+        const cachedDriverJson = localStorage.getItem('fleet_driver_profile');
+        if (cachedDriverJson) {
+          try {
+            const cachedDrv = JSON.parse(cachedDriverJson);
+            if (cachedDrv?.id === savedDriverId) {
+              if (!this.state) this.refresh().catch(() => {});
+              return {
+                id: cachedDrv.id,
+                phone: cachedDrv.phone,
+                full_name: cachedDrv.full_name,
+                role: 'driver',
+                is_active: cachedDrv.is_active !== false,
+                created_at: cachedDrv.created_at || new Date().toISOString(),
+                updated_at: cachedDrv.updated_at || new Date().toISOString(),
+              };
+            }
+          } catch {}
+        }
         if (!this.state) await this.refresh();
         const drivers = this.state?.drivers || [];
         const drv = drivers.find((d) => d.id === savedDriverId);
@@ -808,18 +840,20 @@ class ServerFleetRepository {
       .sort((a, b) => new Date(b.end_time!).getTime() - new Date(a.end_time!).getTime());
 
     if (completedTrips.length > 0 && completedTrips[0].end_time) {
-      const lastEnd = new Date(completedTrips[0].end_time);
-      const minHours = this.state.settings.min_trip_interval_hours || 6;
-      const nextAllowed = new Date(lastEnd.getTime() + minHours * 3600 * 1000);
-      const now = new Date();
+      const minHours = this.state?.settings?.min_trip_interval_hours ?? 0;
+      if (minHours > 0) {
+        const lastEnd = new Date(completedTrips[0].end_time);
+        const nextAllowed = new Date(lastEnd.getTime() + minHours * 3600 * 1000);
+        const now = new Date();
 
-      if (now < nextAllowed) {
-        const lastFormatted = lastEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        const nextFormatted = nextAllowed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        return {
-          allowed: false,
-          reason: `Your last trip ended at ${lastFormatted}. Next trip can start after ${nextFormatted}.`,
-        };
+        if (now < nextAllowed) {
+          const lastFormatted = lastEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          const nextFormatted = nextAllowed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          return {
+            allowed: false,
+            reason: `Your last trip ended at ${lastFormatted}. Next trip can start after ${nextFormatted}.`,
+          };
+        }
       }
     }
 
@@ -1900,10 +1934,11 @@ class ServerFleetRepository {
 
   public async getSettings(): Promise<{ min_trip_interval_hours: number; owner_password: string; [key: string]: any }> {
     if (!this.state) await this.refresh();
+    const fallbackPassword = typeof window !== 'undefined' ? localStorage.getItem('fleet_owner_password') || 'kore2026' : 'kore2026';
     return (
       this.state?.settings || {
-        min_trip_interval_hours: 6,
-        owner_password: 'kore2026',
+        min_trip_interval_hours: 0,
+        owner_password: fallbackPassword,
       }
     );
   }
@@ -1946,6 +1981,17 @@ class ServerFleetRepository {
   }
 
   public async updateSettings(key: string, value: string): Promise<void> {
+    if (this.state) {
+      if (!this.state.settings) {
+        this.state.settings = {
+          min_trip_interval_hours: 0,
+          owner_password: 'kore2026',
+          company_name: 'Nalakath Logistics',
+        };
+      }
+      (this.state.settings as Record<string, any>)[key] = value;
+      this.notify();
+    }
     await this.dispatchAction('updateSetting', { key, value });
   }
 }

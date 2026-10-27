@@ -42,11 +42,31 @@ export async function safeSetDoc(ref: any, data: any, options?: any) {
 
 let cachedFleetState: FleetState | null = null;
 let lastCacheTime = 0;
-const CACHE_TTL_MS = 2500; // 2.5s cache to eliminate heavy Firestore read storms
+const CACHE_TTL_MS = 60000; // 60s warm cache with in-memory mutations
 
 export function invalidateFleetCache() {
   cachedFleetState = null;
   lastCacheTime = 0;
+}
+
+export function updateCachedItem<K extends keyof FleetState>(key: K, item: any, idKey: string = 'id') {
+  if (!cachedFleetState) return;
+  const list = ((cachedFleetState[key] as any[]) || []).slice();
+  const idx = list.findIndex((x) => x && x[idKey] === item[idKey]);
+  if (idx >= 0) {
+    list[idx] = { ...list[idx], ...item };
+  } else {
+    list.unshift(item);
+  }
+  (cachedFleetState as any)[key] = list;
+  lastCacheTime = Date.now();
+}
+
+export function removeCachedItem<K extends keyof FleetState>(key: K, id: string, idKey: string = 'id') {
+  if (!cachedFleetState) return;
+  const list = ((cachedFleetState[key] as any[]) || []).slice();
+  (cachedFleetState as any)[key] = list.filter((x) => x && x[idKey] !== id);
+  lastCacheTime = Date.now();
 }
 
 export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<FleetState> {
@@ -199,7 +219,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
 
   const settingsData = settingsSnap.exists() ? settingsSnap.data() : {};
   const settings = {
-    min_trip_interval_hours: Number(settingsData?.min_trip_interval_hours || 6),
+    min_trip_interval_hours: Number(settingsData?.min_trip_interval_hours ?? 0),
     owner_password: String(settingsData?.owner_password || 'kore2026'),
     company_name: String(settingsData?.company_name || 'Nalakath Logistics'),
   };
@@ -319,7 +339,7 @@ export async function createDriverInFirestore(data: {
   };
 
   await safeSetDoc(doc(firestore, 'drivers', id), newDriver);
-  invalidateFleetCache();
+  updateCachedItem('drivers', newDriver);
   return newDriver;
 }
 
@@ -351,10 +371,10 @@ export async function updateDriverInFirestore(
   if (data.allow_next_trip_override !== undefined) updatedData.allow_next_trip_override = Number(data.allow_next_trip_override);
 
   await safeSetDoc(driverRef, updatedData, { merge: true });
-  invalidateFleetCache();
 
-  const finalSnap = await getDoc(driverRef);
-  return { id, ...(finalSnap.data() as any) } as Driver;
+  const updatedDriver = { ...current, ...updatedData, id } as Driver;
+  updateCachedItem('drivers', updatedDriver);
+  return updatedDriver;
 }
 
 export async function deleteDriverInFirestore(
@@ -399,7 +419,9 @@ export async function deleteDriverInFirestore(
   batch.delete(driverRef);
   await batch.commit();
 
-  invalidateFleetCache();
+  removeCachedItem('drivers', realId);
+  deletedTripIds.forEach((tId) => removeCachedItem('trips', tId));
+  deletedExpenseIds.forEach((eId) => removeCachedItem('expenses', eId));
 
   return {
     success: true,
@@ -452,7 +474,7 @@ export async function createVehicleInFirestore(data: {
   };
 
   await safeSetDoc(doc(firestore, 'vehicles', id), newVehicle);
-  invalidateFleetCache();
+  updateCachedItem('vehicles', newVehicle);
   return newVehicle;
 }
 
@@ -496,10 +518,10 @@ export async function updateVehicleInFirestore(
   if (data.isActive !== undefined) updatedData.is_active = Boolean(data.isActive);
 
   await safeSetDoc(vehRef, updatedData, { merge: true });
-  invalidateFleetCache();
 
-  const finalSnap = await getDoc(vehRef);
-  return { id, ...(finalSnap.data() as any) } as Vehicle;
+  const updatedVehicle = { ...(snap.data() || {}), ...updatedData, id } as Vehicle;
+  updateCachedItem('vehicles', updatedVehicle);
+  return updatedVehicle;
 }
 
 export async function deleteVehicleInFirestore(
@@ -539,7 +561,9 @@ export async function deleteVehicleInFirestore(
   batch.delete(vehRef);
   await batch.commit();
 
-  invalidateFleetCache();
+  removeCachedItem('vehicles', realId);
+  deletedTripIds.forEach((tId) => removeCachedItem('trips', tId));
+  deletedExpenseIds.forEach((eId) => removeCachedItem('expenses', eId));
 
   return {
     success: true,
@@ -574,7 +598,7 @@ export async function createCompanyInFirestore(data: {
   };
 
   await safeSetDoc(doc(firestore, 'companies', id), newCompany);
-  invalidateFleetCache();
+  updateCachedItem('companies', newCompany);
   return newCompany;
 }
 
@@ -604,10 +628,10 @@ export async function updateCompanyInFirestore(
   if (data.is_active !== undefined) updatedData.is_active = Boolean(data.is_active);
 
   await safeSetDoc(compRef, updatedData, { merge: true });
-  invalidateFleetCache();
 
-  const finalSnap = await getDoc(compRef);
-  return { id, ...(finalSnap.data() as any) } as Company;
+  const updatedCompany = { ...(snap.data() || {}), ...updatedData, id } as Company;
+  updateCachedItem('companies', updatedCompany);
+  return updatedCompany;
 }
 
 export async function deleteCompanyInFirestore(
@@ -657,7 +681,10 @@ export async function deleteCompanyInFirestore(
   batch.delete(compRef);
   await batch.commit();
 
-  invalidateFleetCache();
+  removeCachedItem('companies', realId);
+  deletedVehicleIds.forEach((vId) => removeCachedItem('vehicles', vId));
+  deletedTripIds.forEach((tId) => removeCachedItem('trips', tId));
+  deletedExpenseIds.forEach((eId) => removeCachedItem('expenses', eId));
 
   return {
     success: true,
@@ -757,15 +784,17 @@ export async function startTripInFirestore(data: {
 
     if (completedTrips.length > 0 && completedTrips[0].end_time) {
       const settingsSnap = await getDoc(doc(firestore, 'settings', 'fleet_settings'));
-      const minHours = Number(settingsSnap.data()?.min_trip_interval_hours || 6);
-      const lastEnd = new Date(completedTrips[0].end_time);
-      const nextAllowed = new Date(lastEnd.getTime() + minHours * 3600 * 1000);
-      const now = new Date();
+      const minHours = Number(settingsSnap.data()?.min_trip_interval_hours ?? 0);
+      if (minHours > 0) {
+        const lastEnd = new Date(completedTrips[0].end_time);
+        const nextAllowed = new Date(lastEnd.getTime() + minHours * 3600 * 1000);
+        const now = new Date();
 
-      if (now < nextAllowed) {
-        const lastFormatted = lastEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        const nextFormatted = nextAllowed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        throw new Error(`Your last trip ended at ${lastFormatted}. Next trip can start after ${nextFormatted}.`);
+        if (now < nextAllowed) {
+          const lastFormatted = lastEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          const nextFormatted = nextAllowed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          throw new Error(`Your last trip ended at ${lastFormatted}. Next trip can start after ${nextFormatted}.`);
+        }
       }
     }
   }
@@ -1234,17 +1263,47 @@ export async function getLinkedCountsFromFirestore(
 export async function loginDriverInFirestore(phone: string, pin: string): Promise<Driver> {
   const firestore = requireDb();
   const cleanPhone = phone.trim();
-  const snap = await getDocs(collection(firestore, 'drivers'));
+  const rawDigits = cleanPhone.replace(/\D/g, '');
+  const last10 = rawDigits.slice(-10);
+
+  // Fast indexed lookup for phone variations
+  const phoneVariants = Array.from(
+    new Set([
+      cleanPhone,
+      rawDigits,
+      last10,
+      `+91${last10}`,
+      `+91 ${last10}`,
+    ].filter(Boolean))
+  );
 
   let matched: Driver | null = null;
-  snap.forEach((d) => {
-    const data = d.data();
-    const dPhone = String(data.phone || '').replace(/\D/g, '');
-    const reqPhone = cleanPhone.replace(/\D/g, '');
-    if (dPhone.endsWith(reqPhone.slice(-10)) || reqPhone.endsWith(dPhone.slice(-10))) {
-      matched = { id: d.id, ...(data as any) } as Driver;
-    }
-  });
+  try {
+    const q = query(
+      collection(firestore, 'drivers'),
+      where('phone', 'in', phoneVariants.slice(0, 10))
+    );
+    const snap = await getDocs(q);
+    snap.forEach((d) => {
+      if (!matched) {
+        matched = { id: d.id, ...(d.data() as any) } as Driver;
+      }
+    });
+  } catch (err) {
+    console.warn('Fast phone index query failed, falling back to full drivers collection scan:', err);
+  }
+
+  // Fallback if formatting was non-standard or 'in' query missed
+  if (!matched) {
+    const allSnap = await getDocs(collection(firestore, 'drivers'));
+    allSnap.forEach((d) => {
+      const data = d.data();
+      const dPhone = String(data.phone || '').replace(/\D/g, '');
+      if (dPhone.endsWith(last10) || (last10 && last10.endsWith(dPhone.slice(-10)))) {
+        matched = { id: d.id, ...(data as any) } as Driver;
+      }
+    });
+  }
 
   if (!matched) {
     throw new Error('This mobile number is not registered. Please contact the owner.');
@@ -1258,11 +1317,19 @@ export async function loginDriverInFirestore(phone: string, pin: string): Promis
   return matched;
 }
 
+let cachedOwnerPassword: { pass: string; ts: number } | null = null;
+
 export async function loginOwnerInFirestore(password: string): Promise<boolean> {
   const firestore = requireDb();
-  const snap = await getDoc(doc(firestore, 'settings', 'fleet_settings'));
-  const data = snap.exists() ? snap.data() : {};
-  const expectedPassword = String(data?.owner_password || 'kore2026');
+  let expectedPassword = 'kore2026';
+  if (cachedOwnerPassword && Date.now() - cachedOwnerPassword.ts < 60000) {
+    expectedPassword = cachedOwnerPassword.pass;
+  } else {
+    const snap = await getDoc(doc(firestore, 'settings', 'fleet_settings'));
+    const data = snap.exists() ? snap.data() : {};
+    expectedPassword = String(data?.owner_password || 'kore2026');
+    cachedOwnerPassword = { pass: expectedPassword, ts: Date.now() };
+  }
 
   if (password.trim() !== expectedPassword.trim()) {
     throw new Error('Invalid owner password');

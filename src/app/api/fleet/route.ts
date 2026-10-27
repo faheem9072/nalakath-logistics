@@ -26,6 +26,7 @@ import {
 } from '@/lib/firebase/firestore-service';
 import { fleetEvents } from '@/lib/server/events';
 
+
 export async function GET() {
   try {
     // Firebase Firestore is the ONLY authoritative database

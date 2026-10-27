@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
 import { Profile } from '@/types/database';
-import { Bell, LogOut, Check, Smartphone, Shield, RefreshCw } from 'lucide-react';
+import { Bell, LogOut, Check, Smartphone, Shield, RefreshCw, Settings } from 'lucide-react';
 
 interface MoveIQTopBarProps {
   title?: string;
@@ -182,6 +182,20 @@ export function MoveIQTopBar({
                       <div className="flex items-center gap-2">
                         <Smartphone className="w-4 h-4" />
                         <span>Driver View Preview</span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        router.push('/settings');
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2 rounded-2xl text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Settings className="w-4 h-4 text-gray-500" />
+                        <span>Settings & Password</span>
                       </div>
                     </button>
                   </div>

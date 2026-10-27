@@ -540,7 +540,7 @@ class FleetDatabase {
         }
       }
     }
-    const minHours = parseFloat(settings.min_trip_interval_hours || '6');
+    const minHours = parseFloat(settings.min_trip_interval_hours || '0');
     const nowMs = Date.now();
 
     // Dynamically derive Driver status from trips table (never from stored status flag!)
@@ -553,7 +553,7 @@ class FleetDatabase {
       let cooldownRemainingMinutes = 0;
       let cooldownUntil: string | null = null;
 
-      if (!activeTrip && lastTrip?.end_time && d.allow_next_trip_override !== 1) {
+      if (!activeTrip && lastTrip?.end_time && d.allow_next_trip_override !== 1 && minHours > 0) {
         const lastEndMs = new Date(lastTrip.end_time).getTime();
         const nextAllowedMs = lastEndMs + minHours * 3600 * 1000;
         if (nowMs < nextAllowedMs) {
@@ -719,19 +719,21 @@ class FleetDatabase {
       const settingRow = this.db.prepare("SELECT value FROM settings WHERE key = 'min_trip_interval_hours'").get() as
         | { value: string }
         | undefined;
-      const minHours = parseFloat(settingRow?.value || '6');
+      const minHours = parseFloat(settingRow?.value || '0');
 
-      const lastEnd = new Date(lastCompletedTrip.end_time);
-      const nextAllowed = new Date(lastEnd.getTime() + minHours * 3600 * 1000);
-      const now = new Date();
+      if (minHours > 0) {
+        const lastEnd = new Date(lastCompletedTrip.end_time);
+        const nextAllowed = new Date(lastEnd.getTime() + minHours * 3600 * 1000);
+        const now = new Date();
 
-      if (now < nextAllowed) {
-        const lastFormatted = lastEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        const nextFormatted = nextAllowed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-        return {
-          allowed: false,
-          reason: `Your last trip ended at ${lastFormatted}. Next trip can start after ${nextFormatted}.`,
-        };
+        if (now < nextAllowed) {
+          const lastFormatted = lastEnd.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          const nextFormatted = nextAllowed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+          return {
+            allowed: false,
+            reason: `Your last trip ended at ${lastFormatted}. Next trip can start after ${nextFormatted}.`,
+          };
+        }
       }
     }
 

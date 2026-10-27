@@ -1,31 +1,32 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { dataRepo, FleetState } from '@/lib/data-service';
-import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
-import { isFirebaseConfigured } from '@/lib/firebase/config';
+import { dataRepo } from '@/lib/data-service';
+import { isFirebaseConfigured, db } from '@/lib/firebase/config';
 import { syncFleetToFirestore } from '@/lib/firebase/sync';
+import { doc, setDoc } from 'firebase/firestore';
 import {
-  Settings,
-  Clock,
   Lock,
   Database,
   CheckCircle2,
   AlertCircle,
   RefreshCw,
-  Zap,
   Save,
-  Users,
   Cloud,
   Eye,
   EyeOff,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 
 export function SettingsView() {
-  const [minHours, setMinHours] = useState('6');
-  const [ownerPassword, setOwnerPassword] = useState('kore2026');
-  const [showPassword, setShowPassword] = useState(false);
-  const [drivers, setDrivers] = useState<FleetState['drivers']>([]);
+  const [currentPassword, setCurrentPassword] = useState('kore2026');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState('');
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -34,10 +35,8 @@ export function SettingsView() {
 
   const loadData = async () => {
     const s = await dataRepo.getSettings();
-    setMinHours(String(s.min_trip_interval_hours || 6));
-    setOwnerPassword(s.owner_password || 'kore2026');
-    const dList = await dataRepo.getDrivers();
-    setDrivers(dList);
+    const storedPass = s.owner_password || (typeof window !== 'undefined' ? localStorage.getItem('fleet_owner_password') : null) || 'kore2026';
+    setCurrentPassword(storedPass);
     setLastUpdated(dataRepo.getLastUpdated());
   };
 
@@ -47,33 +46,55 @@ export function SettingsView() {
     return unsub;
   }, []);
 
-  const [overrideLoadingId, setOverrideLoadingId] = useState<string | null>(null);
-
-  const handleAllowSecondTrip = async (driverId: string, driverName: string) => {
-    setOverrideLoadingId(driverId);
-    try {
-      await dataRepo.allowDriverNextTripOverride(driverId);
-      setSaveSuccess(`2nd Trip enabled for ${driverName}! They can start another trip immediately.`);
-      setTimeout(() => setSaveSuccess(null), 4000);
-      await loadData();
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to enable 2nd trip');
-    } finally {
-      setOverrideLoadingId(null);
-    }
-  };
-
   const handleSavePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSaving(true);
+    setPasswordError(null);
     setSaveSuccess(null);
+
+    const cleanPass = newPassword.trim();
+    if (!cleanPass) {
+      setPasswordError('Please enter a new password');
+      return;
+    }
+    if (cleanPass.length < 4) {
+      setPasswordError('Password must be at least 4 characters long');
+      return;
+    }
+    if (cleanPass !== confirmPassword.trim()) {
+      setPasswordError('New password and confirm password do not match');
+      return;
+    }
+
+    setIsSaving(true);
     try {
-      await dataRepo.updateSettings('owner_password', ownerPassword.trim());
-      setSaveSuccess('Owner password updated successfully!');
-      setTimeout(() => setSaveSuccess(null), 3000);
-      await loadData();
-    } catch (err) {
-      console.error('Failed to save settings:', err);
+      // 1. Direct fast client-side Firestore write if available
+      if (isFirebaseConfigured && db) {
+        const settingsRef = doc(db, 'settings', 'fleet_settings');
+        await setDoc(
+          settingsRef,
+          {
+            owner_password: cleanPass,
+            updated_at: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
+
+      // 2. Server API sync & memory state update
+      await dataRepo.updateSettings('owner_password', cleanPass);
+
+      // 3. Update localStorage and local state
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('fleet_owner_password', cleanPass);
+      }
+      setCurrentPassword(cleanPass);
+      setNewPassword('');
+      setConfirmPassword('');
+      setSaveSuccess(`Owner password updated successfully to "${cleanPass}"! Please note this for your next login.`);
+      setTimeout(() => setSaveSuccess(null), 6000);
+    } catch (err: unknown) {
+      console.error('Failed to update owner password:', err);
+      setPasswordError(err instanceof Error ? err.message : 'Failed to update owner password');
     } finally {
       setIsSaving(false);
     }
@@ -115,7 +136,7 @@ export function SettingsView() {
           Fleet Settings
         </h1>
         <p className="text-xs text-gray-400 leading-relaxed">
-          Manage driver 2nd trip permissions, owner access credentials, and cloud synchronization.
+          Manage owner access password, credentials, and live cloud synchronization.
         </p>
       </div>
 
@@ -126,105 +147,142 @@ export function SettingsView() {
         </div>
       )}
 
-      {/* 2nd Trip Authorization for Drivers (Replaces Minimum Rest Input) */}
+      {/* Owner Access Password Card */}
       <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-2xs space-y-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
-            <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
-              Allow 2nd Trip For Drivers
-            </h2>
-          </div>
-          <p className="text-xs text-gray-500 leading-relaxed">
-            By default, when a driver ends a trip, the system enforces a rest interval before their next trip. If a driver needs to run a 2nd trip immediately, click &apos;Allow 2nd Trip&apos; below:
-          </p>
-        </div>
-
-        <div className="divide-y divide-gray-100 border border-gray-100 rounded-2xl overflow-hidden">
-          {drivers.length === 0 ? (
-            <p className="p-4 text-xs text-gray-400 text-center">No drivers registered</p>
-          ) : (
-            drivers.map((d) => {
-              const hasOverride = (d as unknown as { allow_next_trip_override?: number }).allow_next_trip_override === 1;
-              const isOnTrip = d.status === 'on_trip' || (d as unknown as { active_trip?: unknown }).active_trip != null;
-              const isInCooldown = (d as unknown as { is_in_cooldown?: boolean }).is_in_cooldown;
-
-              return (
-                <div
-                  key={d.id}
-                  className="p-3.5 flex items-center justify-between gap-3 bg-white hover:bg-gray-50 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-[#121316] truncate">
-                      {d.full_name}
-                    </p>
-                    <p className="text-xs text-gray-400 font-mono mt-0.5">
-                      {d.phone} • {isOnTrip ? 'Currently on trip' : isInCooldown ? 'Resting after trip' : 'Idle / Ready'}
-                    </p>
-                  </div>
-
-                  <div className="shrink-0 flex items-center gap-2">
-                    {hasOverride ? (
-                      <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>2nd Trip Allowed</span>
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={overrideLoadingId === d.id}
-                        onClick={() => handleAllowSecondTrip(d.id, d.full_name)}
-                        className="px-3.5 py-2 rounded-xl bg-[#121316] hover:bg-black text-white text-xs font-bold flex items-center gap-1.5 active:scale-95 transition-all shadow-xs cursor-pointer disabled:opacity-50"
-                      >
-                        <Zap className="w-3.5 h-3.5 text-[#D4F65B] fill-[#D4F65B]" />
-                        <span>{overrideLoadingId === d.id ? 'Enabling...' : 'Allow 2nd Trip'}</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* Owner Password Card */}
-      <div className="bg-white rounded-[28px] p-6 border border-gray-100 shadow-2xs space-y-4">
-        <form onSubmit={handleSavePassword} className="space-y-4">
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
-              Owner Access Password
-            </label>
-            <p className="text-xs text-gray-500">
-              Password required to log in to the Owner Dashboard.
-            </p>
-            <div className="relative mt-2">
-              <Lock className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={ownerPassword}
-                onChange={(e) => setOwnerPassword(e.target.value)}
-                className="w-full h-12 pl-11 pr-12 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-bold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
-                title={showPassword ? 'Hide password' : 'Show password'}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-[#121316] text-[#D4F65B] flex items-center justify-center shrink-0">
+              <KeyRound className="w-5 h-5" />
             </div>
+            <div>
+              <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
+                Owner Access Password
+              </h2>
+              <p className="text-xs text-gray-400">
+                Security key for logging into the Owner Dashboard
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+            <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+            <span>Admin Protected</span>
+          </span>
+        </div>
+
+        {/* Current Active Password display with reveal toggle */}
+        <div className="p-4 bg-[#F8F9FA] rounded-2xl border border-gray-100 flex items-center justify-between">
+          <div className="space-y-0.5">
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+              Current Active Password:
+            </span>
+            <p className="font-mono text-sm font-black text-[#121316]">
+              {showCurrentPassword ? currentPassword : '•'.repeat(Math.max(currentPassword.length, 6))}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+            className="px-3 py-1.5 rounded-xl bg-white hover:bg-gray-100 border border-gray-200 text-xs font-bold text-gray-700 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs active:scale-95"
+          >
+            {showCurrentPassword ? (
+              <>
+                <EyeOff className="w-3.5 h-3.5 text-gray-500" />
+                <span>Hide</span>
+              </>
+            ) : (
+              <>
+                <Eye className="w-3.5 h-3.5 text-gray-500" />
+                <span>Reveal</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Change Password Form */}
+        <form onSubmit={handleSavePassword} className="space-y-3.5 pt-1">
+          <div className="space-y-3">
+            {/* New Password */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                New Password
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={newPassword}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    setPasswordError(null);
+                  }}
+                  placeholder="Enter new password (min. 4 characters)"
+                  className="w-full h-12 pl-11 pr-12 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-bold text-[#121316] placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-gray-400 focus:bg-white transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  title={showNewPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Confirm New Password */}
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider">
+                Confirm New Password
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => {
+                    setConfirmPassword(e.target.value);
+                    setPasswordError(null);
+                  }}
+                  placeholder="Re-enter new password to confirm"
+                  className="w-full h-12 pl-11 pr-12 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-bold text-[#121316] placeholder:font-normal placeholder:text-gray-400 focus:outline-none focus:border-gray-400 focus:bg-white transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                  title={showConfirmPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {passwordError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-2 text-xs font-bold text-rose-700 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{passwordError}</span>
+              </div>
+            )}
           </div>
 
           <button
             type="submit"
-            disabled={isSaving}
-            className="w-full h-12 bg-[#121316] hover:bg-black text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer"
+            disabled={isSaving || !newPassword.trim()}
+            className="w-full h-12 bg-[#121316] hover:bg-black text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98 disabled:opacity-50"
           >
-            <Save className="w-4 h-4 text-[#D4F65B]" />
-            <span>{isSaving ? 'Updating Password...' : 'Save New Password'}</span>
+            {isSaving ? (
+              <>
+                <RefreshCw className="w-4 h-4 text-[#D4F65B] animate-spin" />
+                <span>Updating Password...</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 text-[#D4F65B]" />
+                <span>Save New Owner Password</span>
+              </>
+            )}
           </button>
         </form>
       </div>

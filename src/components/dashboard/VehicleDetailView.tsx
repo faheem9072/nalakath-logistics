@@ -7,7 +7,10 @@ import { doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { VehicleDetailReport, ExpenseWithDetails, VehicleTravelHistoryTrip } from '@/types/models';
 import { Vehicle, ExpenseType, ClientCompany, VehicleType, Driver, TripLocation } from '@/types/database';
 import { MoveIQDarkCard } from '@/components/moveiq/MoveIQDarkCard';
-import { TripMapModal } from '@/components/map/TripMapModal';
+import dynamic from 'next/dynamic';
+const TripMapModal = dynamic(() => import('@/components/map/TripMapModal').then((m) => m.TripMapModal), {
+  ssr: false,
+});
 import {
   ArrowLeft,
   Calendar,

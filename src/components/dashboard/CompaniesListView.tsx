@@ -31,9 +31,11 @@ import {
 } from 'lucide-react';
 import { triggerExcelDownload } from '@/lib/utils/download-excel';
 
+type CompanyWithStatus = Company & { syncStatus?: 'saving' | 'saved' };
+
 export function CompaniesListView() {
   const router = useRouter();
-  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companies, setCompanies] = useState<CompanyWithStatus[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
   const [companyReport, setCompanyReport] = useState<CompanyMonthlyReport | null>(null);
@@ -129,6 +131,7 @@ export function CompaniesListView() {
 
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingAdd) return;
     setAddError(null);
     if (!addName.trim()) {
       setAddError('Company name is required');
@@ -136,22 +139,54 @@ export function CompaniesListView() {
     }
 
     setIsSubmittingAdd(true);
+
+    const tempId = `comp-${Date.now()}`;
+    const cleanName = addName.trim();
+    const cleanContact = addContact.trim() || undefined;
+    const cleanPhone = addPhone.trim() || undefined;
+
+    const optimisticComp: CompanyWithStatus = {
+      id: tempId,
+      name: cleanName,
+      contact_person: cleanContact || null,
+      contact_phone: cleanPhone || null,
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      syncStatus: 'saving',
+    };
+
+    // 1. Instantly display on screen (0ms)
+    setCompanies((prev) => [optimisticComp, ...prev]);
+    setIsAddCompOpen(false);
+    setAddName('');
+    setAddContact('');
+    setAddPhone('');
+    setIsSubmittingAdd(false);
+
     try {
-      await dataRepo.createCompany({
-        name: addName.trim(),
-        contact_person: addContact.trim() || undefined,
-        contact_phone: addPhone.trim() || undefined,
+      const realComp = await dataRepo.createCompany({
+        name: cleanName,
+        contact_person: cleanContact,
+        contact_phone: cleanPhone,
       });
-      setIsAddCompOpen(false);
-      setAddName('');
-      setAddContact('');
-      setAddPhone('');
+
+      setCompanies((prev) =>
+        prev.map((c) => (c.id === tempId ? { ...c, ...realComp, syncStatus: 'saved' } : c))
+      );
       showSavedNotice('Company created successfully!');
-      await loadCompanies();
+
+      setTimeout(() => {
+        setCompanies((prev) =>
+          prev.map((c) => (c.id === realComp.id ? { ...c, syncStatus: undefined } : c))
+        );
+      }, 2500);
     } catch (err: unknown) {
-      setAddError(err instanceof Error ? err.message : 'Failed to add company');
-    } finally {
-      setIsSubmittingAdd(false);
+      // Rollback
+      setCompanies((prev) => prev.filter((c) => c.id !== tempId));
+      const msg = err instanceof Error ? err.message : 'Failed to add company';
+      showSavedNotice(msg);
+      alert(msg);
     }
   };
 
@@ -166,25 +201,64 @@ export function CompaniesListView() {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingComp) return;
+    if (!editingComp || isSubmittingEdit) return;
     setEditError(null);
     setIsSubmittingEdit(true);
+
+    const targetId = editingComp.id;
+    const cleanName = editName.trim();
+    const cleanContact = editContact.trim() || undefined;
+    const cleanPhone = editPhone.trim() || undefined;
+    const previousComp = companies.find((c) => c.id === targetId);
+
+    // 1. Instantly display on screen (0ms)
+    setCompanies((prev) =>
+      prev.map((c) =>
+        c.id === targetId
+          ? {
+              ...c,
+              name: cleanName,
+              contact_person: cleanContact || null,
+              contact_phone: cleanPhone || null,
+              syncStatus: 'saving',
+            }
+          : c
+      )
+    );
+    setEditingComp(null);
+    setIsSubmittingEdit(false);
+
     try {
-      await dataRepo.updateCompany(editingComp.id, {
-        name: editName.trim(),
-        contact_person: editContact.trim() || undefined,
-        contact_phone: editPhone.trim() || undefined,
+      await dataRepo.updateCompany(targetId, {
+        name: cleanName,
+        contact_person: cleanContact,
+        contact_phone: cleanPhone,
       });
-      setEditingComp(null);
+
+      setCompanies((prev) =>
+        prev.map((c) => (c.id === targetId ? { ...c, syncStatus: 'saved' } : c))
+      );
       showSavedNotice('Company details saved!');
-      await loadCompanies();
-      if (selectedCompanyId === editingComp.id) {
-        await loadCompanyDetail(editingComp.id, selectedMonth);
+
+      setTimeout(() => {
+        setCompanies((prev) =>
+          prev.map((c) => (c.id === targetId ? { ...c, syncStatus: undefined } : c))
+        );
+      }, 2500);
+
+      if (selectedCompanyId === targetId) {
+        loadCompanyDetail(targetId, selectedMonth).catch(() => {});
       }
     } catch (err: unknown) {
-      setEditError(err instanceof Error ? err.message : 'Failed to update company');
-    } finally {
-      setIsSubmittingEdit(false);
+      // Rollback
+      if (previousComp) {
+        setCompanies((prev) =>
+          prev.map((c) => (c.id === targetId ? { ...previousComp, syncStatus: undefined } : c))
+        );
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to update company';
+      showSavedNotice(msg);
+      alert(msg);
     }
   };
 
@@ -653,9 +727,21 @@ export function CompaniesListView() {
                   <Building2 className="w-6 h-6 text-[#D4F65B]" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="font-extrabold text-[#121316] text-base tracking-tight truncate">
-                    {c.name}
-                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="font-extrabold text-[#121316] text-base tracking-tight truncate">
+                      {c.name}
+                    </h3>
+                    {c.syncStatus === 'saving' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse shrink-0">
+                        Saving...
+                      </span>
+                    )}
+                    {c.syncStatus === 'saved' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                        Saved
+                      </span>
+                    )}
+                  </div>
                   {c.contact_person ? (
                     <p className="text-xs text-gray-500 font-medium truncate mt-0.5">
                       {c.contact_person} {c.contact_phone && `• ${c.contact_phone}`}

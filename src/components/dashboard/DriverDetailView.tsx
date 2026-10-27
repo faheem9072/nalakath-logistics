@@ -121,11 +121,9 @@ export function DriverDetailView({
   useEffect(() => {
     loadDriverData();
     const unsub = dataRepo.subscribe(loadDriverData);
-    const interval = setInterval(loadDriverData, 4000);
 
     return () => {
       unsub();
-      clearInterval(interval);
     };
   }, [driverId, selectedMonth, isEditDriverOpen]);
 

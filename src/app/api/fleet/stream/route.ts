@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { fleetEvents } from '@/lib/server/events';
 
+
 export async function GET(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

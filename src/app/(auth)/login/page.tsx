@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
-import { Phone, Lock, ArrowRight, Shield, Smartphone, AlertCircle, KeyRound } from 'lucide-react';
+import { Phone, Lock, ArrowRight, Shield, Smartphone, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react';
 import { InstallPwaButton } from '@/components/layout/InstallPwaButton';
 
 function LoginFormContent() {
@@ -34,6 +34,7 @@ function LoginFormContent() {
   const [driverPhone, setDriverPhone] = useState('');
   const [driverPin, setDriverPin] = useState('');
   const [ownerPassword, setOwnerPassword] = useState('');
+  const [showOwnerPassword, setShowOwnerPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -213,12 +214,20 @@ function LoginFormContent() {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-gray-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
-                    type="password"
+                    type={showOwnerPassword ? 'text' : 'password'}
                     placeholder="Enter owner password"
                     value={ownerPassword}
                     onChange={(e) => setOwnerPassword(e.target.value)}
-                    className="w-full h-12 pl-11 pr-4 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
+                    className="w-full h-12 pl-11 pr-12 bg-[#F8F9FA] border border-gray-200 rounded-2xl text-sm font-semibold text-[#121316] focus:outline-none focus:border-gray-400 focus:bg-white focus:ring-2 focus:ring-gray-100 transition-all"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowOwnerPassword(!showOwnerPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    title={showOwnerPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showOwnerPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 

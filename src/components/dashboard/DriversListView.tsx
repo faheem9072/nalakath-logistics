@@ -32,6 +32,7 @@ interface DriverWithStatus extends Driver {
     startOdo: number;
     startTime: string;
   } | null;
+  syncStatus?: 'saving' | 'saved';
 }
 
 export function DriversListView() {
@@ -43,7 +44,7 @@ export function DriversListView() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Keep raw drivers ref for active trip status re-computations
-  const rawDriversRef = useRef<Driver[]>([]);
+  const rawDriversRef = useRef<DriverWithStatus[]>([]);
 
   // Add Driver Modal
   const [isAddDriverOpen, setIsAddDriverOpen] = useState(false);
@@ -68,7 +69,7 @@ export function DriversListView() {
     setTimeout(() => setSavedNotice(null), 3500);
   };
 
-  const enhanceDrivers = (list: Driver[]): DriverWithStatus[] => {
+  const enhanceDrivers = (list: DriverWithStatus[]): DriverWithStatus[] => {
     return list.map((d) => {
       const live = dataRepo.getActiveTripForDriver(d.id);
       if (live) {
@@ -97,8 +98,8 @@ export function DriversListView() {
       ]);
 
       setVehicles(allVehicles);
-      rawDriversRef.current = allDrivers;
-      setDrivers(enhanceDrivers(allDrivers));
+      rawDriversRef.current = allDrivers as DriverWithStatus[];
+      setDrivers(enhanceDrivers(allDrivers as DriverWithStatus[]));
     } catch (err) {
       console.error('Failed to load drivers from repo:', err);
     } finally {
@@ -119,6 +120,7 @@ export function DriversListView() {
 
   const handleAddDriver = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingAdd) return;
     setAddError(null);
     const name = addName.trim();
     const phone = addPhone.trim();
@@ -131,24 +133,63 @@ export function DriversListView() {
 
     setIsSubmittingAdd(true);
 
+    const tempId = `drv-${Date.now()}`;
+    const optimisticDriver: DriverWithStatus = {
+      id: tempId,
+      profile_id: tempId,
+      employee_code: `DRV-NEW`,
+      full_name: name,
+      phone,
+      pin,
+      license_number: '',
+      license_expiry: '2035-12-31',
+      is_fixed_route: false,
+      default_route_id: null,
+      status: 'idle',
+      is_active: true,
+      allow_next_trip_override: 0,
+      notes: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      syncStatus: 'saving',
+    };
+
+    // 1. Instantly display on screen (0ms)
+    rawDriversRef.current = [optimisticDriver, ...rawDriversRef.current];
+    setDrivers(enhanceDrivers(rawDriversRef.current));
+    setIsAddDriverOpen(false);
+    setAddName('');
+    setAddPhone('');
+    setAddPin('1234');
+    setIsSubmittingAdd(false);
+
     try {
-      await dataRepo.createDriver({
+      const realDriver = await dataRepo.createDriver({
         full_name: name,
         phone,
         pin,
       });
 
-      setIsAddDriverOpen(false);
-      setAddName('');
-      setAddPhone('');
-      setAddPin('1234');
+      rawDriversRef.current = rawDriversRef.current.map((d) =>
+        d.id === tempId ? { ...d, ...realDriver, syncStatus: 'saved' } : d
+      );
+      setDrivers(enhanceDrivers(rawDriversRef.current));
       showSavedNotice('New driver registered successfully!');
-      await loadDriversData();
+
+      setTimeout(() => {
+        rawDriversRef.current = rawDriversRef.current.map((d) =>
+          d.id === realDriver.id ? { ...d, syncStatus: undefined } : d
+        );
+        setDrivers(enhanceDrivers(rawDriversRef.current));
+      }, 2500);
     } catch (err: unknown) {
       console.error('Failed to add driver:', err);
-      setAddError(err instanceof Error ? err.message : 'Failed to add driver');
-    } finally {
-      setIsSubmittingAdd(false);
+      // Rollback
+      rawDriversRef.current = rawDriversRef.current.filter((d) => d.id !== tempId);
+      setDrivers(enhanceDrivers(rawDriversRef.current));
+      const msg = err instanceof Error ? err.message : 'Failed to add driver';
+      showSavedNotice(msg);
+      alert(msg);
     }
   };
 
@@ -164,7 +205,7 @@ export function DriversListView() {
 
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingDriver) return;
+    if (!editingDriver || isSubmittingEdit) return;
     setEditError(null);
     setIsSubmittingEdit(true);
 
@@ -173,7 +214,16 @@ export function DriversListView() {
     const phone = editPhone.trim();
     const pin = editPin.trim() || '1234';
     const isActive = editIsActive;
-    const nowIso = new Date().toISOString();
+
+    const previousDriver = rawDriversRef.current.find((d) => d.id === targetId);
+
+    // 1. Instantly display changes on screen (0ms)
+    rawDriversRef.current = rawDriversRef.current.map((d) =>
+      d.id === targetId ? { ...d, full_name: name, phone, pin, is_active: isActive, syncStatus: 'saving' } : d
+    );
+    setDrivers(enhanceDrivers(rawDriversRef.current));
+    setEditingDriver(null);
+    setIsSubmittingEdit(false);
 
     try {
       await dataRepo.updateDriver(targetId, {
@@ -184,17 +234,29 @@ export function DriversListView() {
       });
 
       rawDriversRef.current = rawDriversRef.current.map((d) =>
-        d.id === targetId ? { ...d, full_name: name, phone, pin, is_active: isActive } : d
+        d.id === targetId ? { ...d, syncStatus: 'saved' } : d
       );
       setDrivers(enhanceDrivers(rawDriversRef.current));
-      setEditingDriver(null);
       showSavedNotice('Driver details saved!');
-      await loadDriversData();
+
+      setTimeout(() => {
+        rawDriversRef.current = rawDriversRef.current.map((d) =>
+          d.id === targetId ? { ...d, syncStatus: undefined } : d
+        );
+        setDrivers(enhanceDrivers(rawDriversRef.current));
+      }, 2500);
     } catch (err: unknown) {
       console.error('Failed to save driver:', err);
-      setEditError(err instanceof Error ? err.message : 'Failed to update driver');
-    } finally {
-      setIsSubmittingEdit(false);
+      // Rollback
+      if (previousDriver) {
+        rawDriversRef.current = rawDriversRef.current.map((d) =>
+          d.id === targetId ? { ...previousDriver, syncStatus: undefined } : d
+        );
+        setDrivers(enhanceDrivers(rawDriversRef.current));
+      }
+      const msg = err instanceof Error ? err.message : 'Failed to update driver';
+      showSavedNotice(msg);
+      alert(msg);
     }
   };
 
@@ -345,6 +407,7 @@ export function DriversListView() {
         ) : (
           filtered.map((d) => {
             const isOnTrip = !!d.activeTripInfo;
+            const isInCooldown = Boolean((d as unknown as { is_in_cooldown?: boolean }).is_in_cooldown);
 
             return (
               <div
@@ -362,6 +425,16 @@ export function DriversListView() {
                       <h3 className="font-extrabold text-[#121316] text-sm sm:text-base tracking-tight truncate">
                         {d.full_name}
                       </h3>
+                      {d.syncStatus === 'saving' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 animate-pulse shrink-0">
+                          Saving...
+                        </span>
+                      )}
+                      {d.syncStatus === 'saved' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                          Saved
+                        </span>
+                      )}
                       {/* Status Chip (On trip / 2nd Trip Allowed / Resting / Idle) */}
                       {isOnTrip ? (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#D4F65B] text-black shrink-0">
@@ -383,21 +456,25 @@ export function DriversListView() {
                             Cancel
                           </button>
                         </div>
-                      ) : (
+                      ) : isInCooldown ? (
                         <div className="inline-flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500">
-                            Idle
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                            Resting
                           </span>
                           <button
                             type="button"
                             onClick={(e) => handleAllowSecondTrip(d.id, d.full_name, e)}
                             className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#121316] hover:bg-black text-[#D4F65B] active:scale-95 transition-all shadow-2xs cursor-pointer border border-[#1e1f24]"
-                            title="Allow 2nd trip without 6-hour wait"
+                            title="Allow 2nd trip immediately"
                           >
                             <Zap className="w-2.5 h-2.5 fill-[#D4F65B]" />
                             <span>Allow 2nd Trip</span>
                           </button>
                         </div>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                          Idle / Ready
+                        </span>
                       )}
                     </div>
 

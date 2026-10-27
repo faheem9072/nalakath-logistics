@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loginOwnerInFirestore } from '@/lib/firebase/firestore-service';
 
+
 export async function POST(req: NextRequest) {
   try {
     const { password } = await req.json();
