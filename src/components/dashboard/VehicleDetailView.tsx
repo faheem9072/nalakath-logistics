@@ -250,11 +250,10 @@ export function VehicleDetailView({
     if (!report) return;
     try {
       const counts = await dataRepo.getLinkedCounts('vehicle', report.vehicle.id).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
-      let linkedParts: string[] = [];
-      if (counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
-      if (counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
-      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
-      const confirmMsg = `Delete vehicle ${report.vehicle.registration_number}?${linkedText} This cannot be undone.`;
+      const hasHistory = counts.tripsCount > 0 || counts.expensesCount > 0;
+      const confirmMsg = hasHistory
+        ? `Archive vehicle ${report.vehicle.registration_number}? Past trips (${counts.tripsCount}) and expenses (${counts.expensesCount}) will be safely preserved for company accounting.`
+        : `Delete vehicle ${report.vehicle.registration_number}?`;
 
       if (!window.confirm(confirmMsg)) return;
 
@@ -264,7 +263,7 @@ export function VehicleDetailView({
         return;
       }
 
-      showSavedNotice(`Vehicle "${report.vehicle.registration_number}" deleted successfully.`);
+      showSavedNotice(hasHistory ? `Vehicle "${report.vehicle.registration_number}" archived safely (past accounts preserved).` : `Vehicle "${report.vehicle.registration_number}" removed.`);
       if (onVehicleUpdated) onVehicleUpdated();
       if (onBack) onBack();
     } catch (err) {

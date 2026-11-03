@@ -34,6 +34,8 @@ export interface Company {
   contact_person?: string | null;
   contact_phone?: string | null;
   is_active: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }

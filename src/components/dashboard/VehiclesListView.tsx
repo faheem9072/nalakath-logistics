@@ -294,11 +294,10 @@ export function VehiclesListView() {
     e.stopPropagation();
     try {
       const counts = await dataRepo.getLinkedCounts('vehicle', vehicleId).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
-      let linkedParts: string[] = [];
-      if (counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
-      if (counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
-      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
-      const confirmMsg = `Delete vehicle ${reg}?${linkedText} This cannot be undone.`;
+      const hasHistory = counts.tripsCount > 0 || counts.expensesCount > 0;
+      const confirmMsg = hasHistory
+        ? `Archive vehicle ${reg}? Past trips (${counts.tripsCount}) and expenses (${counts.expensesCount}) will be safely preserved for company accounting.`
+        : `Delete vehicle ${reg}?`;
 
       if (!window.confirm(confirmMsg)) return;
 
@@ -309,7 +308,7 @@ export function VehiclesListView() {
       }
 
       setVehicles((prev) => prev.filter((v) => v.id !== vehicleId));
-      showSavedNotice(`Vehicle "${reg}" deleted successfully!`);
+      showSavedNotice(hasHistory ? `Vehicle "${reg}" archived safely (past accounts preserved)!` : `Vehicle "${reg}" removed!`);
       await loadVehiclesData();
     } catch (err) {
       console.error('Failed to delete vehicle:', err);

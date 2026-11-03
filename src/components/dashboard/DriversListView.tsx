@@ -264,11 +264,10 @@ export function DriversListView() {
     e.stopPropagation();
     try {
       const counts = await dataRepo.getLinkedCounts('driver', driverId).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
-      let linkedParts: string[] = [];
-      if (counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
-      if (counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
-      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
-      const confirmMsg = `Delete driver ${driverName}?${linkedText} This cannot be undone.`;
+      const hasHistory = counts.tripsCount > 0 || counts.expensesCount > 0;
+      const confirmMsg = hasHistory
+        ? `Archive driver ${driverName}? Past trips (${counts.tripsCount}) and expenses (${counts.expensesCount}) will be safely preserved for company accounting and salary.`
+        : `Delete driver ${driverName}?`;
 
       if (!window.confirm(confirmMsg)) return;
 
@@ -280,7 +279,7 @@ export function DriversListView() {
 
       rawDriversRef.current = rawDriversRef.current.filter((d) => d.id !== driverId);
       setDrivers(enhanceDrivers(rawDriversRef.current));
-      showSavedNotice(`Driver "${driverName}" deleted permanently!`);
+      showSavedNotice(hasHistory ? `Driver "${driverName}" archived safely (past accounts preserved)!` : `Driver "${driverName}" removed!`);
       await loadDriversData();
     } catch (err: unknown) {
       console.error('Failed to delete driver:', err);

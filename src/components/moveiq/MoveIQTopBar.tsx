@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { dataRepo } from '@/lib/data-service';
 import { Profile } from '@/types/database';
 import { Bell, LogOut, Check, Smartphone, Shield, RefreshCw, Settings } from 'lucide-react';
+import { InstallPwaButton } from '@/components/layout/InstallPwaButton';
 
 interface MoveIQTopBarProps {
   title?: string;
@@ -200,6 +201,10 @@ export function MoveIQTopBar({
                     </button>
                   </div>
                 )}
+
+                <div className="py-2 border-b border-gray-100">
+                  <InstallPwaButton className="w-full justify-center !py-2.5 !rounded-2xl" />
+                </div>
 
                 <div className="pt-2">
                   <button

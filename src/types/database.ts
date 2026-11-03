@@ -78,6 +78,8 @@ export interface Vehicle {
   default_driver_ids?: string[];
   notes: string | null;
   is_active?: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +98,8 @@ export interface Expense {
   note?: string | null;
   bill_photo_url?: string | null;
   edited_by_owner_at?: string | null;
+  is_deleted?: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at?: string;
 }
@@ -114,6 +118,8 @@ export interface Driver {
   status: DriverStatus;
   role?: 'driver';
   is_active?: boolean;
+  is_deleted?: boolean;
+  deleted_at?: string;
   allow_next_trip_override?: number;
   is_in_cooldown?: boolean;
   cooldown_remaining_minutes?: number;
@@ -170,6 +176,8 @@ export interface Trip {
   start_location?: TripLocation | null;
   end_location?: TripLocation | null;
   edited_by_owner_at?: string | null;
+  is_deleted?: boolean;
+  deleted_at?: string;
   created_at: string;
   updated_at: string;
 }

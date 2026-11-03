@@ -214,11 +214,10 @@ export function DriverDetailView({
     if (!driver) return;
     try {
       const counts = await dataRepo.getLinkedCounts('driver', driver.id).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
-      let linkedParts: string[] = [];
-      if (counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
-      if (counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
-      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
-      const confirmMsg = `Delete driver ${driver.full_name}?${linkedText} This cannot be undone.`;
+      const hasHistory = counts.tripsCount > 0 || counts.expensesCount > 0;
+      const confirmMsg = hasHistory
+        ? `Archive driver ${driver.full_name}? Past trips (${counts.tripsCount}) and expenses (${counts.expensesCount}) will be safely preserved for company accounting and salary.`
+        : `Delete driver ${driver.full_name}?`;
 
       if (!window.confirm(confirmMsg)) return;
 
@@ -228,7 +227,7 @@ export function DriverDetailView({
         return;
       }
 
-      showSavedNotice(`Driver "${driver.full_name}" deleted successfully.`);
+      showSavedNotice(hasHistory ? `Driver "${driver.full_name}" archived safely (past accounts preserved).` : `Driver "${driver.full_name}" removed.`);
       if (onDriverUpdated) onDriverUpdated();
       onBack();
     } catch (err) {

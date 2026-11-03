@@ -271,12 +271,10 @@ export function CompaniesListView() {
         expensesCount: 0,
       }));
 
-      let linkedParts: string[] = [];
-      if (counts.vehiclesCount && counts.vehiclesCount > 0) linkedParts.push(`${counts.vehiclesCount} vehicles`);
-      if (counts.tripsCount && counts.tripsCount > 0) linkedParts.push(`${counts.tripsCount} trips`);
-      if (counts.expensesCount && counts.expensesCount > 0) linkedParts.push(`${counts.expensesCount} expenses`);
-      let linkedText = linkedParts.length > 0 ? ` This will also delete ${linkedParts.join(' and ')}.` : '';
-      const confirmMsg = `Delete company ${companyName}?${linkedText} This cannot be undone.`;
+      const hasHistory = (counts.vehiclesCount && counts.vehiclesCount > 0) || (counts.tripsCount && counts.tripsCount > 0) || (counts.expensesCount && counts.expensesCount > 0);
+      const confirmMsg = hasHistory
+        ? `Archive company ${companyName}? Past vehicles, trips, and expenses will be safely preserved for company accounting.`
+        : `Delete company ${companyName}?`;
 
       if (!window.confirm(confirmMsg)) return;
 
@@ -286,7 +284,7 @@ export function CompaniesListView() {
         return;
       }
 
-      showSavedNotice(`Company "${companyName}" deleted successfully!`);
+      showSavedNotice(hasHistory ? `Company "${companyName}" archived safely (past accounts preserved)!` : `Company "${companyName}" removed!`);
       if (selectedCompanyId === companyId) {
         setSelectedCompanyId(null);
       }

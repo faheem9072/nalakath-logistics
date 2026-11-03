@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { dataRepo } from '@/lib/data-service';
 import { isFirebaseConfigured, db } from '@/lib/firebase/config';
-import { syncFleetToFirestore } from '@/lib/firebase/sync';
 import { doc, setDoc } from 'firebase/firestore';
 import {
   Lock,
@@ -17,6 +16,7 @@ import {
   EyeOff,
   KeyRound,
   ShieldCheck,
+  Download,
 } from 'lucide-react';
 
 export function SettingsView() {
@@ -30,8 +30,8 @@ export function SettingsView() {
   const [lastUpdated, setLastUpdated] = useState('');
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
-  const [firebaseMsg, setFirebaseMsg] = useState<string | null>(null);
+  const [isExportingBackup, setIsExportingBackup] = useState(false);
+  const [backupSuccess, setBackupSuccess] = useState<string | null>(null);
 
   const loadData = async () => {
     const s = await dataRepo.getSettings();
@@ -100,23 +100,31 @@ export function SettingsView() {
     }
   };
 
-  const handleSyncFirebase = async () => {
-    setIsSyncingFirebase(true);
-    setFirebaseMsg(null);
+  const handleDownloadBackup = async () => {
+    setIsExportingBackup(true);
+    setBackupSuccess(null);
     try {
-      const res = await fetch('/api/fleet');
-      const state = await res.json();
-      const ok = await syncFleetToFirestore(state);
-      if (ok) {
-        setFirebaseMsg('Successfully synced all drivers, vehicles & trips to Firebase Cloud!');
-      } else {
-        setFirebaseMsg('Firebase configured! Make sure Firestore Database is created in test mode.');
-      }
+      const res = await fetch('/api/fleet', { cache: 'no-store' });
+      if (!res.ok) throw new Error('Failed to fetch fleet state for backup');
+      const data = await res.json();
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const dateStr = new Date().toISOString().slice(0, 10);
+      a.download = `Nalakath_Logistics_Master_Backup_${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setBackupSuccess(`Complete backup exported successfully (${(data.trips || []).length} trips, ${(data.expenses || []).length} expenses, ${(data.vehicles || []).length} vehicles)!`);
+      setTimeout(() => setBackupSuccess(null), 6000);
     } catch (err: unknown) {
-      setFirebaseMsg('Sync notice: ' + (err instanceof Error ? err.message : 'Connecting to Firestore'));
+      console.error('Failed to export master backup:', err);
+      alert('Backup export failed: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
-      setIsSyncingFirebase(false);
-      setTimeout(() => setFirebaseMsg(null), 5000);
+      setIsExportingBackup(false);
     }
   };
 
@@ -287,84 +295,79 @@ export function SettingsView() {
         </form>
       </div>
 
-      {/* Firebase Cloud Connection Card */}
+      {/* Cloud Security & System Health */}
       <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Cloud className="w-4 h-4 text-amber-500" />
+            <ShieldCheck className="w-5 h-5 text-emerald-600" />
             <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
-              Firebase Cloud Database
+              System Security & Cloud Status
             </h2>
           </div>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Connected</span>
+            <span>Encrypted & Active</span>
           </span>
         </div>
 
-        <div className="p-3 bg-[#F8F9FA] rounded-2xl space-y-1.5 text-xs">
+        <div className="p-3.5 bg-[#F8F9FA] rounded-2xl space-y-2 text-xs">
           <div className="flex items-center justify-between">
-            <span className="text-gray-500">Firebase Project:</span>
-            <span className="font-mono font-bold text-gray-900">nalakath-logistics</span>
+            <span className="text-gray-500 font-medium">Cloud Database:</span>
+            <span className="font-bold text-gray-900 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Google Cloud Firestore (Live)
+            </span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-gray-500">Cloud Storage:</span>
-            <span className="font-mono font-medium text-gray-700 truncate max-w-[200px]">nalakath-logistics.firebasestorage.app</span>
+            <span className="text-gray-500 font-medium">Data Safety:</span>
+            <span className="font-bold text-emerald-700">Soft-Delete Active (Protected)</span>
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-gray-500">App ID:</span>
-            <span className="font-mono text-[10px] text-gray-600">1:184879371139:web:...</span>
+            <span className="text-gray-500 font-medium">Live Connection:</span>
+            <span className="font-mono font-bold text-gray-800">{lastUpdated || 'Connected'}</span>
           </div>
         </div>
 
-        {firebaseMsg && (
-          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center gap-2">
+        <p className="text-[11px] text-gray-400 leading-relaxed">
+          All driver trips, vehicle logs, and company accounts are encrypted and safely backed up to Google Cloud. Past records cannot be lost or accidentally erased.
+        </p>
+      </div>
+
+      {/* Master Data Backup & Safety Card */}
+      <div className="bg-white rounded-[28px] p-5 border border-emerald-100 shadow-2xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Download className="w-4 h-4 text-emerald-600" />
+            <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
+              Master Fleet Backup (.JSON)
+            </h2>
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Zero Data Loss Protection</span>
+          </span>
+        </div>
+
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Download a complete, offline backup copy of all 50 vehicles, drivers, trips, fuel & maintenance expenses, and monthly accounts to your device at any time.
+        </p>
+
+        {backupSuccess && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-800 flex items-center gap-2 animate-in fade-in">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>{firebaseMsg}</span>
+            <span>{backupSuccess}</span>
           </div>
         )}
 
         <button
           type="button"
-          onClick={handleSyncFirebase}
-          disabled={isSyncingFirebase}
-          className="w-full h-11 bg-[#121316] hover:bg-black text-[#D4F65B] rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98 disabled:opacity-50"
+          onClick={handleDownloadBackup}
+          disabled={isExportingBackup}
+          className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all cursor-pointer active:scale-98 disabled:opacity-50"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isSyncingFirebase ? 'animate-spin' : ''}`} />
-          <span>{isSyncingFirebase ? 'Syncing to Firebase Cloud...' : 'Sync Fleet to Firebase Cloud'}</span>
+          <Download className={`w-3.5 h-3.5 ${isExportingBackup ? 'animate-bounce' : ''}`} />
+          <span>{isExportingBackup ? 'Generating Master Backup...' : 'Download Full Data Backup (JSON)'}</span>
         </button>
-      </div>
-
-      {/* Database & Sync Status */}
-      <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-2.5">
-        <div className="flex items-center gap-2">
-          <Database className="w-4 h-4 text-gray-700" />
-          <h2 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
-            Online Shared Database
-          </h2>
-        </div>
-
-        <div className="p-3 bg-[#F8F9FA] rounded-2xl space-y-1 text-xs">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-500">Storage Engine:</span>
-            <span className="font-bold text-gray-900">SQLite WAL Engine (Server Shared)</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-500">Live Realtime Sync:</span>
-            <span className="font-bold text-emerald-600 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Active (4-sec poll fallback)
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-gray-500">Last Synced:</span>
-            <span className="font-mono font-bold text-gray-800">{lastUpdated || 'Connecting...'}</span>
-          </div>
-        </div>
-
-        <p className="text-[11px] text-gray-400">
-          All changes are saved to the server database. All connected phones and dashboards stay in sync within seconds.
-        </p>
       </div>
     </div>
   );

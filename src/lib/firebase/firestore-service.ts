@@ -100,6 +100,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
     if (!data.full_name && !data.phone && data.is_active === false) {
       return;
     }
+    const isDeleted = Boolean(data.is_deleted);
     rawDrivers.push({
       id: d.id,
       profile_id: d.id,
@@ -110,8 +111,10 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       license_expiry: data.license_expiry || '2035-12-31',
       is_fixed_route: false,
       default_route_id: null,
-      status: data.status || 'idle',
-      is_active: data.is_active !== false,
+      status: isDeleted ? 'inactive' : (data.status || 'idle'),
+      is_active: data.is_active !== false && !isDeleted,
+      is_deleted: isDeleted,
+      deleted_at: data.deleted_at || undefined,
       allow_next_trip_override: data.allow_next_trip_override || 0,
       pin: data.pin || '1234',
       notes: data.notes || null,
@@ -123,6 +126,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const rawVehicles: Vehicle[] = [];
   vehiclesSnap.forEach((v) => {
     const data = v.data();
+    const isVehDeleted = Boolean(data.is_deleted);
     rawVehicles.push({
       id: v.id,
       registration_number: data.registration_number || v.id,
@@ -131,7 +135,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       capacity: data.capacity || 2,
       current_odometer: Number(data.current_odometer || data.initial_km || 0),
       initial_km: Number(data.initial_km || 0),
-      status: data.status || 'idle',
+      status: isVehDeleted ? 'inactive' : (data.status || 'idle'),
       company_id: data.company_id || '',
       company: data.company || '',
       is_adhoc: Boolean(data.is_adhoc),
@@ -139,7 +143,9 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       default_driver_names: data.default_driver_names || [],
       default_driver_ids: data.default_driver_ids || [],
       notes: data.notes || null,
-      is_active: data.is_active !== false,
+      is_active: data.is_active !== false && !isVehDeleted,
+      is_deleted: isVehDeleted,
+      deleted_at: data.deleted_at || undefined,
       created_at: data.created_at || new Date().toISOString(),
       updated_at: data.updated_at || new Date().toISOString(),
     });
@@ -148,12 +154,15 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const companies: Company[] = [];
   companiesSnap.forEach((c) => {
     const data = c.data();
+    const isCompDeleted = Boolean(data.is_deleted);
     companies.push({
       id: c.id,
       name: data.name || '',
       contact_person: data.contact_person || null,
       contact_phone: data.contact_phone || null,
-      is_active: data.is_active !== false,
+      is_active: data.is_active !== false && !isCompDeleted,
+      is_deleted: isCompDeleted,
+      deleted_at: data.deleted_at || undefined,
       created_at: data.created_at || new Date().toISOString(),
       updated_at: data.updated_at || new Date().toISOString(),
     });
@@ -162,6 +171,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const trips: Trip[] = [];
   tripsSnap.forEach((t) => {
     const data = t.data();
+    if (data.is_deleted === true) return;
     trips.push({
       id: t.id,
       assignment_id: data.assignment_id || undefined,
@@ -180,6 +190,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       start_location: data.start_location || null,
       end_location: data.end_location || null,
       edited_by_owner_at: data.edited_by_owner_at || null,
+      is_deleted: false,
       created_at: data.created_at || new Date().toISOString(),
       updated_at: data.updated_at || new Date().toISOString(),
     });
@@ -188,6 +199,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const expenses: Expense[] = [];
   expensesSnap.forEach((e) => {
     const data = e.data();
+    if (data.is_deleted === true) return;
     expenses.push({
       id: e.id,
       trip_id: data.trip_id || null,
@@ -200,6 +212,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       note: data.note || null,
       bill_photo_url: data.bill_photo_url || null,
       edited_by_owner_at: data.edited_by_owner_at || null,
+      is_deleted: false,
       created_at: data.created_at || new Date().toISOString(),
       updated_at: data.updated_at || new Date().toISOString(),
     });
@@ -208,6 +221,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const vehicleIncomes: { id: string; vehicle_id: string; month: string; amount: number; updated_at: string }[] = [];
   incomesSnap.forEach((i) => {
     const data = i.data();
+    if (data.is_deleted === true) return;
     vehicleIncomes.push({
       id: i.id,
       vehicle_id: data.vehicle_id,
@@ -406,28 +420,68 @@ export async function deleteDriverInFirestore(
 
   // 1. Find linked trips
   const tripsSnap = await getDocs(query(collection(firestore, 'trips'), where('driver_id', '==', realId)));
-  const deletedTripIds = tripsSnap.docs.map((d) => d.id);
+  const hasTrips = tripsSnap.docs.some((d) => d.data().is_deleted !== true);
 
   // 2. Find linked expenses
   const expSnap = await getDocs(query(collection(firestore, 'expenses'), where('driver_id', '==', realId)));
-  const deletedExpenseIds = expSnap.docs.map((d) => d.id);
+  const hasExpenses = expSnap.docs.some((d) => d.data().is_deleted !== true);
 
-  // Delete all linked in batch
-  const batch = writeBatch(firestore);
-  tripsSnap.docs.forEach((d) => batch.delete(d.ref));
-  expSnap.docs.forEach((d) => batch.delete(d.ref));
-  batch.delete(driverRef);
-  await batch.commit();
+  const now = new Date().toISOString();
+
+  // SAFE SOFT-DELETE: If driver has ANY past trips or expenses, NEVER delete them!
+  // Deactivate and mark as deleted, preserving all historical records for accounting & salary.
+  if (hasTrips || hasExpenses) {
+    await safeSetDoc(
+      driverRef,
+      {
+        is_active: false,
+        is_deleted: true,
+        status: 'inactive',
+        deleted_at: now,
+        updated_at: now,
+      },
+      { merge: true }
+    );
+
+    const currentData = snap.exists() ? snap.data() : {};
+    updateCachedItem('drivers', {
+      ...currentData,
+      id: realId,
+      is_active: false,
+      is_deleted: true,
+      status: 'inactive',
+      updated_at: now,
+    });
+
+    return {
+      success: true,
+      deletedRows: 1,
+      deletedTripIds: [],
+      deletedExpenseIds: [],
+    };
+  }
+
+  // If driver had ZERO trips and ZERO expenses (e.g. brand new driver added by mistake):
+  // Safe soft delete to prevent ghost issues
+  await safeSetDoc(
+    driverRef,
+    {
+      is_active: false,
+      is_deleted: true,
+      status: 'inactive',
+      deleted_at: now,
+      updated_at: now,
+    },
+    { merge: true }
+  );
 
   removeCachedItem('drivers', realId);
-  deletedTripIds.forEach((tId) => removeCachedItem('trips', tId));
-  deletedExpenseIds.forEach((eId) => removeCachedItem('expenses', eId));
 
   return {
     success: true,
     deletedRows: 1,
-    deletedTripIds,
-    deletedExpenseIds,
+    deletedTripIds: [],
+    deletedExpenseIds: [],
   };
 }
 
@@ -547,29 +601,70 @@ export async function deleteVehicleInFirestore(
   }
 
   const tripsSnap = await getDocs(query(collection(firestore, 'trips'), where('vehicle_id', '==', realId)));
-  const deletedTripIds = tripsSnap.docs.map((d) => d.id);
+  const hasTrips = tripsSnap.docs.some((d) => d.data().is_deleted !== true);
 
   const expSnap = await getDocs(query(collection(firestore, 'expenses'), where('vehicle_id', '==', realId)));
-  const deletedExpenseIds = expSnap.docs.map((d) => d.id);
+  const hasExpenses = expSnap.docs.some((d) => d.data().is_deleted !== true);
 
   const incomeSnap = await getDocs(query(collection(firestore, 'vehicle_incomes'), where('vehicle_id', '==', realId)));
+  const hasIncomes = incomeSnap.docs.some((d) => d.data().is_deleted !== true);
 
-  const batch = writeBatch(firestore);
-  tripsSnap.docs.forEach((d) => batch.delete(d.ref));
-  expSnap.docs.forEach((d) => batch.delete(d.ref));
-  incomeSnap.docs.forEach((d) => batch.delete(d.ref));
-  batch.delete(vehRef);
-  await batch.commit();
+  const now = new Date().toISOString();
+
+  // SAFE SOFT-DELETE: If vehicle has ANY past trips, expenses, or incomes:
+  // NEVER DELETE TRIPS, EXPENSES, OR INCOMES!
+  // Deactivate and preserve so all accounting, travel history, and expense sheets are safe.
+  if (hasTrips || hasExpenses || hasIncomes) {
+    await safeSetDoc(
+      vehRef,
+      {
+        is_active: false,
+        is_deleted: true,
+        status: 'inactive',
+        deleted_at: now,
+        updated_at: now,
+      },
+      { merge: true }
+    );
+
+    const currentData = snap.exists() ? snap.data() : {};
+    updateCachedItem('vehicles', {
+      ...currentData,
+      id: realId,
+      is_active: false,
+      is_deleted: true,
+      status: 'inactive',
+      updated_at: now,
+    });
+
+    return {
+      success: true,
+      deletedRows: 1,
+      deletedTripIds: [],
+      deletedExpenseIds: [],
+    };
+  }
+
+  // If vehicle had ZERO trips and ZERO expenses:
+  await safeSetDoc(
+    vehRef,
+    {
+      is_active: false,
+      is_deleted: true,
+      status: 'inactive',
+      deleted_at: now,
+      updated_at: now,
+    },
+    { merge: true }
+  );
 
   removeCachedItem('vehicles', realId);
-  deletedTripIds.forEach((tId) => removeCachedItem('trips', tId));
-  deletedExpenseIds.forEach((eId) => removeCachedItem('expenses', eId));
 
   return {
     success: true,
     deletedRows: 1,
-    deletedTripIds,
-    deletedExpenseIds,
+    deletedTripIds: [],
+    deletedExpenseIds: [],
   };
 }
 
@@ -654,44 +749,29 @@ export async function deleteCompanyInFirestore(
     }
   }
 
-  const vehSnap = await getDocs(query(collection(firestore, 'vehicles'), where('company_id', '==', realId)));
-  const deletedVehicleIds = vehSnap.docs.map((d) => d.id);
+  const now = new Date().toISOString();
 
-  let deletedTripIds: string[] = [];
-  let deletedExpenseIds: string[] = [];
-
-  const batch = writeBatch(firestore);
-
-  for (const vehId of deletedVehicleIds) {
-    const tSnap = await getDocs(query(collection(firestore, 'trips'), where('vehicle_id', '==', vehId)));
-    tSnap.docs.forEach((t) => {
-      deletedTripIds.push(t.id);
-      batch.delete(t.ref);
-    });
-
-    const eSnap = await getDocs(query(collection(firestore, 'expenses'), where('vehicle_id', '==', vehId)));
-    eSnap.docs.forEach((e) => {
-      deletedExpenseIds.push(e.id);
-      batch.delete(e.ref);
-    });
-
-    batch.delete(doc(firestore, 'vehicles', vehId));
-  }
-
-  batch.delete(compRef);
-  await batch.commit();
+  // SAFE SOFT-DELETE: Never delete vehicles, trips, or expenses!
+  // Simply deactivate the company so historical data and billing are 100% preserved.
+  await safeSetDoc(
+    compRef,
+    {
+      is_active: false,
+      is_deleted: true,
+      deleted_at: now,
+      updated_at: now,
+    },
+    { merge: true }
+  );
 
   removeCachedItem('companies', realId);
-  deletedVehicleIds.forEach((vId) => removeCachedItem('vehicles', vId));
-  deletedTripIds.forEach((tId) => removeCachedItem('trips', tId));
-  deletedExpenseIds.forEach((eId) => removeCachedItem('expenses', eId));
 
   return {
     success: true,
     deletedRows: 1,
-    deletedVehicleIds,
-    deletedTripIds,
-    deletedExpenseIds,
+    deletedVehicleIds: [],
+    deletedTripIds: [],
+    deletedExpenseIds: [],
   };
 }
 
@@ -1108,12 +1188,18 @@ export async function deleteTripInFirestore(
   const expSnap = await getDocs(query(collection(firestore, 'expenses'), where('trip_id', '==', id)));
   const deletedExpenseIds = expSnap.docs.map((d) => d.id);
 
+  const now = new Date().toISOString();
   const batch = writeBatch(firestore);
-  expSnap.docs.forEach((d) => batch.delete(d.ref));
-  batch.delete(tripRef);
+
+  // Safe soft delete: Mark as deleted so it can never be lost permanently
+  expSnap.docs.forEach((d) => {
+    batch.set(d.ref, { is_deleted: true, deleted_at: now, updated_at: now }, { merge: true });
+  });
+  batch.set(tripRef, { is_deleted: true, deleted_at: now, updated_at: now }, { merge: true });
   await batch.commit();
 
-  invalidateFleetCache();
+  removeCachedItem('trips', id);
+  deletedExpenseIds.forEach((eId) => removeCachedItem('expenses', eId));
 
   return { success: true, deletedRows: 1, deletedExpenseIds };
 }
@@ -1184,8 +1270,18 @@ export async function updateExpenseInFirestore(id: string, data: any): Promise<E
 
 export async function deleteExpenseInFirestore(id: string): Promise<{ success: boolean; deletedRows: number }> {
   const firestore = requireDb();
-  await deleteDoc(doc(firestore, 'expenses', id));
-  invalidateFleetCache();
+  const now = new Date().toISOString();
+  // Safe soft delete
+  await safeSetDoc(
+    doc(firestore, 'expenses', id),
+    {
+      is_deleted: true,
+      deleted_at: now,
+      updated_at: now,
+    },
+    { merge: true }
+  );
+  removeCachedItem('expenses', id);
   return { success: true, deletedRows: 1 };
 }
 
@@ -1216,7 +1312,9 @@ export async function getLinkedCountsFromFirestore(
       getDocs(query(collection(firestore, 'trips'), where('driver_id', '==', id))),
       getDocs(query(collection(firestore, 'expenses'), where('driver_id', '==', id))),
     ]);
-    return { tripsCount: tSnap.size, expensesCount: eSnap.size };
+    const tripsCount = tSnap.docs.filter((d) => d.data().is_deleted !== true).length;
+    const expensesCount = eSnap.docs.filter((d) => d.data().is_deleted !== true).length;
+    return { tripsCount, expensesCount };
   }
 
   if (type === 'vehicle') {
@@ -1224,12 +1322,14 @@ export async function getLinkedCountsFromFirestore(
       getDocs(query(collection(firestore, 'trips'), where('vehicle_id', '==', id))),
       getDocs(query(collection(firestore, 'expenses'), where('vehicle_id', '==', id))),
     ]);
-    return { tripsCount: tSnap.size, expensesCount: eSnap.size };
+    const tripsCount = tSnap.docs.filter((d) => d.data().is_deleted !== true).length;
+    const expensesCount = eSnap.docs.filter((d) => d.data().is_deleted !== true).length;
+    return { tripsCount, expensesCount };
   }
 
   if (type === 'company') {
     const vSnap = await getDocs(query(collection(firestore, 'vehicles'), where('company_id', '==', id)));
-    const vehicleIds = vSnap.docs.map((d) => d.id);
+    const vehicleIds = vSnap.docs.filter((d) => d.data().is_deleted !== true).map((d) => d.id);
     let tripsCount = 0;
     let expensesCount = 0;
 
@@ -1238,12 +1338,12 @@ export async function getLinkedCountsFromFirestore(
         getDocs(query(collection(firestore, 'trips'), where('vehicle_id', '==', vId))),
         getDocs(query(collection(firestore, 'expenses'), where('vehicle_id', '==', vId))),
       ]);
-      tripsCount += tSnap.size;
-      expensesCount += eSnap.size;
+      tripsCount += tSnap.docs.filter((d) => d.data().is_deleted !== true).length;
+      expensesCount += eSnap.docs.filter((d) => d.data().is_deleted !== true).length;
     }
 
     return {
-      vehiclesCount: vSnap.size,
+      vehiclesCount: vehicleIds.length,
       tripsCount,
       expensesCount,
     };
@@ -1251,7 +1351,8 @@ export async function getLinkedCountsFromFirestore(
 
   if (type === 'trip') {
     const eSnap = await getDocs(query(collection(firestore, 'expenses'), where('trip_id', '==', id)));
-    return { tripsCount: 0, expensesCount: eSnap.size };
+    const expensesCount = eSnap.docs.filter((d) => d.data().is_deleted !== true).length;
+    return { tripsCount: 0, expensesCount };
   }
 
   return { tripsCount: 0, expensesCount: 0 };
@@ -1307,6 +1408,10 @@ export async function loginDriverInFirestore(phone: string, pin: string): Promis
 
   if (!matched) {
     throw new Error('This mobile number is not registered. Please contact the owner.');
+  }
+
+  if ((matched as any).is_active === false || (matched as any).is_deleted === true) {
+    throw new Error('This driver account has been deactivated. Please contact the owner.');
   }
 
   const expectedPin = String((matched as Driver).pin || '1234').trim();
