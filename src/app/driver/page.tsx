@@ -105,7 +105,7 @@ function DriverDashboardContent() {
     try {
       const p = await dataRepo.getCurrentProfile();
       if (!p || p.role !== 'driver') {
-        router.push('/login?role=driver');
+        router.push('/driver/login');
         return;
       }
       setProfile(p);
@@ -118,7 +118,7 @@ function DriverDashboardContent() {
       );
 
       if (!matched) {
-        router.push('/login');
+        router.push('/driver/login');
         return;
       }
       setDriver(matched);

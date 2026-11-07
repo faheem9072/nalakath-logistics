@@ -577,12 +577,12 @@ class ServerFleetRepository {
 
   public async getDrivers(): Promise<FleetState['drivers']> {
     if (!this.state) await this.refresh();
-    return this.state?.drivers || [];
+    return (this.state?.drivers || []).filter((d) => !d.is_deleted);
   }
 
   public async getVehicles(company?: string): Promise<FleetState['vehicles']> {
     if (!this.state) await this.refresh();
-    let list = this.state?.vehicles || [];
+    let list = (this.state?.vehicles || []).filter((v) => !v.is_deleted);
     if (company && company !== 'all' && company !== 'All') {
       list = list.filter((v) => (v.company || v.company_name || '').toLowerCase() === company.toLowerCase());
     }
@@ -591,7 +591,7 @@ class ServerFleetRepository {
 
   public async getCompanies(): Promise<Company[]> {
     if (!this.state) await this.refresh();
-    return this.state?.companies || [];
+    return (this.state?.companies || []).filter((c) => !c.is_deleted);
   }
 
   public async getTeams(): Promise<Team[]> {
@@ -1624,17 +1624,6 @@ class ServerFleetRepository {
       if (this.state.drivers) {
         this.state.drivers = this.state.drivers.filter((d) => d.id !== id);
       }
-      const driverTripIds = new Set(
-        (this.state.trips || []).filter((t) => t.driver_id === id).map((t) => t.id)
-      );
-      if (this.state.trips) {
-        this.state.trips = this.state.trips.filter((t) => t.driver_id !== id);
-      }
-      if (this.state.expenses) {
-        this.state.expenses = this.state.expenses.filter(
-          (e) => e.driver_id !== id && (!e.trip_id || !driverTripIds.has(e.trip_id))
-        );
-      }
       if (this.state.assignments) {
         this.state.assignments = this.state.assignments.filter((a) => a.driver_id !== id);
       }
@@ -1755,20 +1744,6 @@ class ServerFleetRepository {
     if (this.state) {
       if (this.state.vehicles) {
         this.state.vehicles = this.state.vehicles.filter((v) => v.id !== id);
-      }
-      const vehicleTripIds = new Set(
-        (this.state.trips || []).filter((t) => t.vehicle_id === id).map((t) => t.id)
-      );
-      if (this.state.trips) {
-        this.state.trips = this.state.trips.filter((t) => t.vehicle_id !== id);
-      }
-      if (this.state.expenses) {
-        this.state.expenses = this.state.expenses.filter(
-          (e) => e.vehicle_id !== id && (!e.trip_id || !vehicleTripIds.has(e.trip_id))
-        );
-      }
-      if (this.state.vehicleIncomes) {
-        this.state.vehicleIncomes = this.state.vehicleIncomes.filter((vi) => vi.vehicle_id !== id);
       }
       if (this.state.assignments) {
         this.state.assignments = this.state.assignments.filter((a) => a.vehicle_id !== id);

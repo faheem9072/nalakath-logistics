@@ -96,11 +96,13 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const rawDrivers: Driver[] = [];
   driversSnap.forEach((d) => {
     const data = d.data();
-    // Exclude deleted/ghost drivers with empty name and phone
+    // Exclude deleted or ghost drivers
+    if (data.is_deleted === true) {
+      return;
+    }
     if (!data.full_name && !data.phone && data.is_active === false) {
       return;
     }
-    const isDeleted = Boolean(data.is_deleted);
     rawDrivers.push({
       id: d.id,
       profile_id: d.id,
@@ -111,10 +113,10 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       license_expiry: data.license_expiry || '2035-12-31',
       is_fixed_route: false,
       default_route_id: null,
-      status: isDeleted ? 'inactive' : (data.status || 'idle'),
-      is_active: data.is_active !== false && !isDeleted,
-      is_deleted: isDeleted,
-      deleted_at: data.deleted_at || undefined,
+      status: data.status || 'idle',
+      is_active: data.is_active !== false,
+      is_deleted: false,
+      deleted_at: undefined,
       allow_next_trip_override: data.allow_next_trip_override || 0,
       pin: data.pin || '1234',
       notes: data.notes || null,
@@ -126,7 +128,10 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const rawVehicles: Vehicle[] = [];
   vehiclesSnap.forEach((v) => {
     const data = v.data();
-    const isVehDeleted = Boolean(data.is_deleted);
+    // Exclude deleted vehicles
+    if (data.is_deleted === true) {
+      return;
+    }
     rawVehicles.push({
       id: v.id,
       registration_number: data.registration_number || v.id,
@@ -135,7 +140,7 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       capacity: data.capacity || 2,
       current_odometer: Number(data.current_odometer || data.initial_km || 0),
       initial_km: Number(data.initial_km || 0),
-      status: isVehDeleted ? 'inactive' : (data.status || 'idle'),
+      status: data.status || 'idle',
       company_id: data.company_id || '',
       company: data.company || '',
       is_adhoc: Boolean(data.is_adhoc),
@@ -143,9 +148,9 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
       default_driver_names: data.default_driver_names || [],
       default_driver_ids: data.default_driver_ids || [],
       notes: data.notes || null,
-      is_active: data.is_active !== false && !isVehDeleted,
-      is_deleted: isVehDeleted,
-      deleted_at: data.deleted_at || undefined,
+      is_active: data.is_active !== false,
+      is_deleted: false,
+      deleted_at: undefined,
       created_at: data.created_at || new Date().toISOString(),
       updated_at: data.updated_at || new Date().toISOString(),
     });
@@ -154,15 +159,18 @@ export async function fetchFleetStateFromFirestore(forceFresh = false): Promise<
   const companies: Company[] = [];
   companiesSnap.forEach((c) => {
     const data = c.data();
-    const isCompDeleted = Boolean(data.is_deleted);
+    // Exclude deleted companies
+    if (data.is_deleted === true) {
+      return;
+    }
     companies.push({
       id: c.id,
       name: data.name || '',
       contact_person: data.contact_person || null,
       contact_phone: data.contact_phone || null,
-      is_active: data.is_active !== false && !isCompDeleted,
-      is_deleted: isCompDeleted,
-      deleted_at: data.deleted_at || undefined,
+      is_active: data.is_active !== false,
+      is_deleted: false,
+      deleted_at: undefined,
       created_at: data.created_at || new Date().toISOString(),
       updated_at: data.updated_at || new Date().toISOString(),
     });
@@ -442,40 +450,14 @@ export async function deleteDriverInFirestore(
       },
       { merge: true }
     );
-
-    const currentData = snap.exists() ? snap.data() : {};
-    updateCachedItem('drivers', {
-      ...currentData,
-      id: realId,
-      is_active: false,
-      is_deleted: true,
-      status: 'inactive',
-      updated_at: now,
-    });
-
-    return {
-      success: true,
-      deletedRows: 1,
-      deletedTripIds: [],
-      deletedExpenseIds: [],
-    };
+  } else {
+    // If driver had ZERO trips and ZERO expenses (e.g. brand new driver added by mistake):
+    // Hard delete document completely from Firestore
+    await deleteDoc(driverRef);
   }
 
-  // If driver had ZERO trips and ZERO expenses (e.g. brand new driver added by mistake):
-  // Safe soft delete to prevent ghost issues
-  await safeSetDoc(
-    driverRef,
-    {
-      is_active: false,
-      is_deleted: true,
-      status: 'inactive',
-      deleted_at: now,
-      updated_at: now,
-    },
-    { merge: true }
-  );
-
   removeCachedItem('drivers', realId);
+  invalidateFleetCache();
 
   return {
     success: true,
@@ -626,39 +608,14 @@ export async function deleteVehicleInFirestore(
       },
       { merge: true }
     );
-
-    const currentData = snap.exists() ? snap.data() : {};
-    updateCachedItem('vehicles', {
-      ...currentData,
-      id: realId,
-      is_active: false,
-      is_deleted: true,
-      status: 'inactive',
-      updated_at: now,
-    });
-
-    return {
-      success: true,
-      deletedRows: 1,
-      deletedTripIds: [],
-      deletedExpenseIds: [],
-    };
+  } else {
+    // If vehicle had ZERO trips and ZERO expenses:
+    // Hard delete document completely from Firestore
+    await deleteDoc(vehRef);
   }
 
-  // If vehicle had ZERO trips and ZERO expenses:
-  await safeSetDoc(
-    vehRef,
-    {
-      is_active: false,
-      is_deleted: true,
-      status: 'inactive',
-      deleted_at: now,
-      updated_at: now,
-    },
-    { merge: true }
-  );
-
   removeCachedItem('vehicles', realId);
+  invalidateFleetCache();
 
   return {
     success: true,

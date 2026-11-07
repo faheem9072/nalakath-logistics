@@ -25,7 +25,7 @@ export default function DashboardLayout({
         if (!profile) {
           // Unauthenticated -> redirect to owner login
           setIsAuthorized(false);
-          router.replace('/login?role=owner');
+          router.replace('/owner/login');
           return;
         }
 
@@ -40,12 +40,12 @@ export default function DashboardLayout({
           setIsAuthorized(true);
         } else {
           setIsAuthorized(false);
-          router.replace('/login?role=owner');
+          router.replace('/owner/login');
         }
       } catch (err) {
         if (!isMounted) return;
         setIsAuthorized(false);
-        router.replace('/login?role=owner');
+        router.replace('/owner/login');
       }
     };
 

@@ -64,6 +64,10 @@ export function DriversListView() {
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
+  // Delete Driver Confirmation Modal (Instant 0ms, No Browser Hang)
+  const [driverToDelete, setDriverToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isDeletingDriver, setIsDeletingDriver] = useState(false);
+
   const showSavedNotice = (msg: string) => {
     setSavedNotice(msg);
     setTimeout(() => setSavedNotice(null), 3500);
@@ -260,30 +264,25 @@ export function DriversListView() {
     }
   };
 
-  const handleDeleteDriver = async (driverId: string, driverName: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const confirmDeleteDriver = async () => {
+    if (!driverToDelete || isDeletingDriver) return;
+    const { id: targetId, name: targetName } = driverToDelete;
+    setIsDeletingDriver(true);
+
+    // 1. Instantly remove from UI (0ms response, zero lag)
+    rawDriversRef.current = rawDriversRef.current.filter((d) => d.id !== targetId);
+    setDrivers(enhanceDrivers(rawDriversRef.current));
+    setDriverToDelete(null);
+    setIsDeletingDriver(false);
+    showSavedNotice(`Driver "${targetName}" removed successfully!`);
+
+    // 2. Perform deletion in background
     try {
-      const counts = await dataRepo.getLinkedCounts('driver', driverId).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
-      const hasHistory = counts.tripsCount > 0 || counts.expensesCount > 0;
-      const confirmMsg = hasHistory
-        ? `Archive driver ${driverName}? Past trips (${counts.tripsCount}) and expenses (${counts.expensesCount}) will be safely preserved for company accounting and salary.`
-        : `Delete driver ${driverName}?`;
-
-      if (!window.confirm(confirmMsg)) return;
-
-      const res = await dataRepo.deleteDriver(driverId);
-      if (res && res.deletedRows === 0) {
-        alert(`Error: Driver "${driverName}" was not found or already deleted.`);
-        return;
-      }
-
-      rawDriversRef.current = rawDriversRef.current.filter((d) => d.id !== driverId);
-      setDrivers(enhanceDrivers(rawDriversRef.current));
-      showSavedNotice(hasHistory ? `Driver "${driverName}" archived safely (past accounts preserved)!` : `Driver "${driverName}" removed!`);
-      await loadDriversData();
+      await dataRepo.deleteDriver(targetId);
     } catch (err: unknown) {
       console.error('Failed to delete driver:', err);
-      alert('Failed to delete driver: ' + (err instanceof Error ? err.message : String(err)));
+      showSavedNotice('Failed to delete driver');
+      loadDriversData();
     }
   };
 
@@ -338,11 +337,12 @@ export function DriversListView() {
     );
   }
 
-  // Filter drivers
-  const activeCount = drivers.filter((d) => !!d.activeTripInfo).length;
-  const idleCount = drivers.length - activeCount;
+  // Filter drivers (strictly exclude deleted drivers)
+  const activeCount = drivers.filter((d) => !d.is_deleted && !!d.activeTripInfo).length;
+  const idleCount = drivers.filter((d) => !d.is_deleted && !d.activeTripInfo).length;
 
   const filtered = drivers.filter((d) => {
+    if (d.is_deleted) return false;
     if (statusFilter === 'on_trip' && !d.activeTripInfo) return false;
     if (statusFilter === 'idle' && d.activeTripInfo) return false;
 
@@ -519,7 +519,10 @@ export function DriversListView() {
                   </button>
                   <button
                     type="button"
-                    onClick={(e) => handleDeleteDriver(d.id, d.full_name, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDriverToDelete({ id: d.id, name: d.full_name });
+                    }}
                     className="p-2 rounded-xl text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition-colors cursor-pointer"
                     title="Delete driver"
                   >
@@ -741,6 +744,41 @@ export function DriversListView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Driver Confirmation Modal - 0ms Instant Response, No Hang */}
+      {driverToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-black text-[#121316]">Delete Driver</h3>
+              <p className="text-xs text-gray-500 font-medium">
+                Are you sure you want to delete <span className="font-bold text-gray-800">{driverToDelete.name}</span>?
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDriverToDelete(null)}
+                disabled={isDeletingDriver}
+                className="flex-1 py-3 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-2xl cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteDriver}
+                disabled={isDeletingDriver}
+                className="flex-1 py-3 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isDeletingDriver ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

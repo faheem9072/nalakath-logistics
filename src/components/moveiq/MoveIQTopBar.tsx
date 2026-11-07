@@ -58,8 +58,13 @@ export function MoveIQTopBar({
   };
 
   const handleLogout = async () => {
+    const isOwner = profile?.role === 'owner';
     await dataRepo.logout();
-    router.push('/login');
+    if (isOwner) {
+      router.push('/owner/login');
+    } else {
+      router.push('/driver/login');
+    }
   };
 
   const handleBell = () => {
@@ -157,35 +162,9 @@ export function MoveIQTopBar({
                   </div>
                 </div>
 
-                {/* Role Switcher - ONLY visible to verified Owners (DRIVERS NEVER SEE THIS) */}
+                {/* Navigation links for Owner */}
                 {profile?.role === 'owner' && (
                   <div className="py-3 border-b border-gray-100 space-y-1.5">
-                    <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-1">
-                      Mode
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => handleRoleSwitch('owner')}
-                      className="w-full flex items-center justify-between px-3 py-2 rounded-2xl bg-[#121316] text-white font-medium cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Shield className="w-4 h-4" />
-                        <span>Owner Dashboard</span>
-                      </div>
-                      <Check className="w-4 h-4 text-[#D4F65B]" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleRoleSwitch('driver')}
-                      className="w-full flex items-center justify-between px-3 py-2 rounded-2xl text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Smartphone className="w-4 h-4" />
-                        <span>Driver View Preview</span>
-                      </div>
-                    </button>
-
                     <button
                       type="button"
                       onClick={() => {
@@ -196,7 +175,7 @@ export function MoveIQTopBar({
                     >
                       <div className="flex items-center gap-2">
                         <Settings className="w-4 h-4 text-gray-500" />
-                        <span>Settings & Password</span>
+                        <span className="font-semibold">Settings & Password</span>
                       </div>
                     </button>
                   </div>

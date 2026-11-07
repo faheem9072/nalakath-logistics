@@ -16,7 +16,7 @@ export default function RootPage() {
       } else if (profile?.role === 'owner') {
         router.replace('/drivers');
       } else {
-        router.replace('/login');
+        router.replace('/driver/login');
       }
     });
   }, [router]);

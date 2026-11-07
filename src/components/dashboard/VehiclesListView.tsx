@@ -69,6 +69,10 @@ export function VehiclesListView() {
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
 
+  // Delete Vehicle Confirmation Modal (Instant 0ms, No Browser Hang)
+  const [vehicleToDelete, setVehicleToDelete] = useState<{ id: string; reg: string } | null>(null);
+  const [isDeletingVehicle, setIsDeletingVehicle] = useState(false);
+
   const showSavedNotice = (msg: string) => {
     setSavedNotice(msg);
     setTimeout(() => setSavedNotice(null), 3500);
@@ -290,29 +294,24 @@ export function VehiclesListView() {
     }
   };
 
-  const handleDeleteVehicle = async (vehicleId: string, reg: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const confirmDeleteVehicle = async () => {
+    if (!vehicleToDelete || isDeletingVehicle) return;
+    const { id: targetId, reg: targetReg } = vehicleToDelete;
+    setIsDeletingVehicle(true);
+
+    // 1. Instantly remove from UI (0ms response, zero lag)
+    setVehicles((prev) => prev.filter((v) => v.id !== targetId));
+    setVehicleToDelete(null);
+    setIsDeletingVehicle(false);
+    showSavedNotice(`Vehicle "${targetReg}" removed successfully!`);
+
+    // 2. Perform deletion in background
     try {
-      const counts = await dataRepo.getLinkedCounts('vehicle', vehicleId).catch(() => ({ tripsCount: 0, expensesCount: 0 }));
-      const hasHistory = counts.tripsCount > 0 || counts.expensesCount > 0;
-      const confirmMsg = hasHistory
-        ? `Archive vehicle ${reg}? Past trips (${counts.tripsCount}) and expenses (${counts.expensesCount}) will be safely preserved for company accounting.`
-        : `Delete vehicle ${reg}?`;
-
-      if (!window.confirm(confirmMsg)) return;
-
-      const res = await dataRepo.deleteVehicle(vehicleId);
-      if (res && res.deletedRows === 0) {
-        alert(`Error: Vehicle "${reg}" was not found or already deleted.`);
-        return;
-      }
-
-      setVehicles((prev) => prev.filter((v) => v.id !== vehicleId));
-      showSavedNotice(hasHistory ? `Vehicle "${reg}" archived safely (past accounts preserved)!` : `Vehicle "${reg}" removed!`);
-      await loadVehiclesData();
-    } catch (err) {
+      await dataRepo.deleteVehicle(targetId);
+    } catch (err: unknown) {
       console.error('Failed to delete vehicle:', err);
-      alert('Failed to delete vehicle: ' + (err instanceof Error ? err.message : String(err)));
+      showSavedNotice('Failed to delete vehicle');
+      loadVehiclesData();
     }
   };
 
@@ -331,12 +330,13 @@ export function VehiclesListView() {
     );
   }
 
-  // Filter vehicles
-  const delhiveryCount = vehicles.filter((v) => (v.company || '').toLowerCase() === 'delhivery').length;
-  const shadowfaxCount = vehicles.filter((v) => (v.company || '').toLowerCase() === 'shadowfax').length;
-  const onRoadCount = vehicles.filter((v) => !!v.activeTripInfo).length;
+  // Filter vehicles (strictly exclude deleted vehicles)
+  const nonDeletedVehicles = vehicles.filter((v) => !v.is_deleted);
+  const delhiveryCount = nonDeletedVehicles.filter((v) => (v.company || '').toLowerCase() === 'delhivery').length;
+  const shadowfaxCount = nonDeletedVehicles.filter((v) => (v.company || '').toLowerCase() === 'shadowfax').length;
+  const onRoadCount = nonDeletedVehicles.filter((v) => !!v.activeTripInfo).length;
 
-  const filtered = vehicles.filter((v) => {
+  const filtered = nonDeletedVehicles.filter((v) => {
     if (companyFilter !== 'all' && (v.company || '').toLowerCase() !== companyFilter.toLowerCase()) {
       return false;
     }
@@ -478,7 +478,10 @@ export function VehiclesListView() {
                   </button>
                   <button
                     type="button"
-                    onClick={(e) => handleDeleteVehicle(v.id, v.registration_number, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVehicleToDelete({ id: v.id, reg: v.registration_number });
+                    }}
                     className="p-2 rounded-xl text-gray-400 hover:text-rose-600 hover:bg-gray-100 transition-colors cursor-pointer"
                     title="Delete vehicle"
                   >
@@ -787,6 +790,41 @@ export function VehiclesListView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Vehicle Confirmation Modal - 0ms Instant Response, No Hang */}
+      {vehicleToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
+          <div className="bg-white rounded-[32px] p-6 max-w-sm w-full space-y-4 shadow-2xl border border-gray-100 animate-in fade-in duration-150">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-black text-[#121316]">Delete Vehicle</h3>
+              <p className="text-xs text-gray-500 font-medium">
+                Are you sure you want to delete vehicle <span className="font-bold text-gray-800">{vehicleToDelete.reg}</span>?
+              </p>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setVehicleToDelete(null)}
+                disabled={isDeletingVehicle}
+                className="flex-1 py-3 text-xs font-bold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-2xl cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteVehicle}
+                disabled={isDeletingVehicle}
+                className="flex-1 py-3 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-2xl flex items-center justify-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {isDeletingVehicle ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

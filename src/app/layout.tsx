@@ -1,14 +1,7 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
 import { AppProviders } from '@/components/providers/AppProviders';
 import { SplashScreen } from '@/components/brand/SplashScreen';
-
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  variable: '--font-inter',
-});
 
 export const viewport: Viewport = {
   themeColor: '#121316',
@@ -47,7 +40,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} h-full antialiased font-sans`}>
+    <html lang="en" className="h-full antialiased font-sans">
       <body className="min-h-full flex flex-col font-sans bg-[#F2F4F7] text-[#121316] selection:bg-[#D4F65B] selection:text-black">
         <SplashScreen />
         <AppProviders>{children}</AppProviders>
