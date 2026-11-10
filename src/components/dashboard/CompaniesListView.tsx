@@ -30,6 +30,7 @@ import {
   FileSpreadsheet,
 } from 'lucide-react';
 import { triggerExcelDownload } from '@/lib/utils/download-excel';
+import { getCurrentMonthPrefix, getAvailableMonthOptions } from '@/lib/utils/month-helper';
 
 type CompanyWithStatus = Company & { syncStatus?: 'saving' | 'saved' };
 
@@ -37,7 +38,7 @@ export function CompaniesListView() {
   const router = useRouter();
   const [companies, setCompanies] = useState<CompanyWithStatus[]>([]);
   const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthPrefix());
   const [companyReport, setCompanyReport] = useState<CompanyMonthlyReport | null>(null);
   const [search, setSearch] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -361,9 +362,11 @@ export function CompaniesListView() {
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="bg-transparent text-xs font-bold text-[#121316] focus:outline-none cursor-pointer"
             >
-              <option value="2026-10">October 2026</option>
-              <option value="2026-09">September 2026</option>
-              <option value="2026-08">August 2026</option>
+              {getAvailableMonthOptions().map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
 

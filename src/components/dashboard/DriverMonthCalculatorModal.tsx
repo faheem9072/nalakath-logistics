@@ -18,6 +18,7 @@ import {
   ChevronRight,
   UserCheck,
 } from 'lucide-react';
+import { getCurrentMonthPrefix, getAvailableMonthOptions } from '@/lib/utils/month-helper';
 
 interface Props {
   isOpen: boolean;
@@ -33,7 +34,7 @@ export function DriverMonthCalculatorModal({
   const { lang, t } = useLanguage();
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthPrefix());
   const [summary, setSummary] = useState<DriverMonthlySummary | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -124,10 +125,11 @@ export function DriverMonthCalculatorModal({
               onChange={(e) => setSelectedMonth(e.target.value)}
               className="w-full h-11 px-3 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
             >
-              <option value="2026-10">October 2026 (Current Month)</option>
-              <option value="2026-09">September 2026</option>
-              <option value="2026-08">August 2026</option>
-              <option value="ALL">{t('allMonths')}</option>
+              {getAvailableMonthOptions().map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>

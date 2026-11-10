@@ -32,8 +32,11 @@ import {
   Clock,
   User,
   FileSpreadsheet,
+  Eye,
+  Camera,
 } from 'lucide-react';
 import { triggerExcelDownload } from '@/lib/utils/download-excel';
+import { getCurrentMonthPrefix, getTodayDateString, getAvailableMonthOptions } from '@/lib/utils/month-helper';
 
 interface VehicleDetailViewProps {
   vehicleId?: string;
@@ -56,7 +59,8 @@ export function VehicleDetailView({
 }: VehicleDetailViewProps) {
   const effectiveQuery = vehicleId || vehicleQuery || initialVehicleQuery || 'veh-del-3057';
   const [report, setReport] = useState<VehicleDetailReport | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth || '2026-10');
+  const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth || getCurrentMonthPrefix());
+  const [viewingBillUrl, setViewingBillUrl] = useState<string | null>(null);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [companies, setCompanies] = useState<{ id: string; name: string }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -88,9 +92,10 @@ export function VehicleDetailView({
   const [expDriverId, setExpDriverId] = useState('');
   const [expType, setExpType] = useState<ExpenseType>('Fuel');
   const [expAmount, setExpAmount] = useState('');
-  const [expDate, setExpDate] = useState('2026-10-18');
+  const [expDate, setExpDate] = useState(getTodayDateString());
   const [expLitres, setExpLitres] = useState('');
   const [expNote, setExpNote] = useState('');
+  const [expBillUrl, setExpBillUrl] = useState<string | null>(null);
   const [expError, setExpError] = useState<string | null>(null);
   const [isSubmittingExp, setIsSubmittingExp] = useState(false);
 
@@ -112,7 +117,7 @@ export function VehicleDetailView({
   const [addTripDriverId, setAddTripDriverId] = useState('');
   const [addTripStartPlace, setAddTripStartPlace] = useState('');
   const [addTripEndPlace, setAddTripEndPlace] = useState('');
-  const [addTripDate, setAddTripDate] = useState('2026-10-01');
+  const [addTripDate, setAddTripDate] = useState(getTodayDateString());
   const [addTripStartTime, setAddTripStartTime] = useState('08:00');
   const [addTripEndTime, setAddTripEndTime] = useState('18:00');
   const [addTripStartKm, setAddTripStartKm] = useState('');
@@ -309,9 +314,10 @@ export function VehicleDetailView({
     setExpDriverId(drivers[0]?.id || 'drv-shameem');
     setExpType('Fuel');
     setExpAmount('');
-    setExpDate(`${selectedMonth}-18`);
+    setExpDate(getTodayDateString());
     setExpLitres('');
     setExpNote('');
+    setExpBillUrl(null);
     setExpError(null);
     setIsExpenseModalOpen(true);
   };
@@ -324,6 +330,7 @@ export function VehicleDetailView({
     setExpDate(exp.date);
     setExpLitres(exp.litres ? String(exp.litres) : '');
     setExpNote(exp.note || '');
+    setExpBillUrl(exp.bill_photo_url || null);
     setExpError(null);
     setIsExpenseModalOpen(true);
   };
@@ -346,6 +353,7 @@ export function VehicleDetailView({
           date: expDate,
           litres: expType === 'Fuel' ? parseFloat(expLitres) || null : null,
           note: expNote.trim() || null,
+          bill_photo_url: expBillUrl,
         });
         showSavedNotice('Expense updated and saved!');
       } else {
@@ -357,6 +365,7 @@ export function VehicleDetailView({
           date: expDate,
           litres: expType === 'Fuel' ? parseFloat(expLitres) || null : null,
           note: expNote.trim() || null,
+          bill_photo_url: expBillUrl,
           isOwner: true,
         });
         showSavedNotice('Expense logged on behalf of driver!');
@@ -572,9 +581,11 @@ export function VehicleDetailView({
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="bg-transparent text-xs font-bold text-[#121316] focus:outline-none cursor-pointer"
           >
-            <option value="2026-10">October 2026</option>
-            <option value="2026-09">September 2026</option>
-            <option value="2026-08">August 2026</option>
+            {getAvailableMonthOptions().map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -1028,6 +1039,19 @@ export function VehicleDetailView({
                       Fuel volume: {entry.litres} L
                     </p>
                   )}
+                  {entry.bill_photo_url && (
+                    <div className="pt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setViewingBillUrl(entry.bill_photo_url!)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-300 text-amber-900 text-[11px] font-bold hover:bg-amber-500/20 active:scale-95 transition-all cursor-pointer"
+                      >
+                        <Receipt className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                        <span>View Petrol Pump Bill</span>
+                        <Eye className="w-3.5 h-3.5 text-amber-700 ml-0.5 shrink-0" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex flex-col items-end gap-1 shrink-0">
@@ -1406,6 +1430,67 @@ export function VehicleDetailView({
                 />
               </div>
 
+              {/* Bill Photo for Owner Entry */}
+              <div className="space-y-1.5 pt-1">
+                <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Petrol Bill / Slip Photo</span>
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-normal">Optional</span>
+                </label>
+
+                {expBillUrl ? (
+                  <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={expBillUrl}
+                      alt="Bill slip"
+                      className="w-10 h-10 object-cover rounded-lg border border-emerald-300 shrink-0"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-emerald-950 truncate">Bill Photo Attached</p>
+                      <button
+                        type="button"
+                        onClick={() => setViewingBillUrl(expBillUrl)}
+                        className="text-[10px] text-emerald-700 font-bold hover:underline cursor-pointer"
+                      >
+                        Preview full size
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setExpBillUrl(null)}
+                      className="p-1 text-emerald-700 hover:text-rose-600 cursor-pointer"
+                      title="Remove"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-xl border border-dashed border-gray-300 hover:border-gray-400 bg-[#F8F9FA] hover:bg-gray-100 cursor-pointer transition-all">
+                    <Camera className="w-3.5 h-3.5 text-gray-600" />
+                    <span className="text-xs font-bold text-gray-700">Attach Bill / Slip Photo</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          const { compressBillImage } = await import('@/lib/utils/image-compression');
+                          const compressed = await compressBillImage(file);
+                          setExpBillUrl(compressed);
+                        } catch (err) {
+                          console.error('Failed to compress bill:', err);
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+
               <div className="pt-2 flex items-center gap-2">
                 <button
                   type="button"
@@ -1771,6 +1856,57 @@ export function VehicleDetailView({
           onClose={() => setIsMapOpen(false)}
           tripInfo={selectedMapTrip}
         />
+      )}
+
+      {/* Modal: View Petrol Pump Bill Photo */}
+      {viewingBillUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative max-w-lg w-full bg-white rounded-3xl p-4 sm:p-5 space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-amber-600" />
+                <h4 className="text-sm font-black text-gray-900">
+                  Petrol Pump Bill / Expense Slip
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingBillUrl(null)}
+                className="p-1.5 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl bg-black/5 border border-gray-200 max-h-[70vh] flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={viewingBillUrl}
+                alt="Bill slip receipt"
+                className="max-h-[70vh] w-auto max-w-full object-contain"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <a
+                href={viewingBillUrl}
+                download="petrol-bill.jpg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5"
+              >
+                Open Full Size
+              </a>
+              <button
+                type="button"
+                onClick={() => setViewingBillUrl(null)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -141,6 +141,7 @@ class ServerFleetRepository {
   private isFetching = false;
   private pollTimer: NodeJS.Timeout | null = null;
   private eventSource: EventSource | null = null;
+  private firestoreUnsub: (() => void) | null = null;
   private sessionUserRole: 'owner' | 'driver' | null = null;
   private sessionDriverId: string | null = null;
 
@@ -162,25 +163,41 @@ class ServerFleetRepository {
         this.sessionDriverId = null;
       }
 
-      // Initial fetch and start live sync polling (60s fallback interval, active only when tab is visible)
-      this.refresh();
+      // Initial fetch and start live sync polling (5s fallback interval, active only when tab is visible)
+      this.refresh(true);
       this.initRealtimeStream();
       this.pollTimer = setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
-          this.refresh();
+          this.refresh(true);
         }
-      }, 60000);
+      }, 5000);
 
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
-          this.refresh();
+          this.refresh(true);
         }
       });
     }
   }
 
-  private initRealtimeStream() {
+  private async initRealtimeStream() {
     if (typeof window === 'undefined') return;
+
+    try {
+      const fsService = await getDirectFirestoreService();
+      if (fsService && fsService.subscribeFleetFromFirestore) {
+        if (this.firestoreUnsub) {
+          this.firestoreUnsub();
+        }
+        this.firestoreUnsub = fsService.subscribeFleetFromFirestore((freshState: FleetState) => {
+          this.state = freshState;
+          this.notify();
+        });
+        return;
+      }
+    } catch (err) {
+      console.warn('Realtime Firestore subscription error, using stream/poll fallback:', err);
+    }
 
     try {
       if (this.eventSource) {
@@ -192,11 +209,11 @@ class ServerFleetRepository {
       this.eventSource.addEventListener('sync', () => {
         if (syncDebounce) clearTimeout(syncDebounce);
         syncDebounce = setTimeout(() => {
-          this.refresh();
-        }, 1500);
+          this.refresh(true);
+        }, 800);
       });
       this.eventSource.onerror = () => {
-        // Will auto reconnect in standard EventSource; 60s polling acts as fallback
+        // Will auto reconnect in standard EventSource; 5s polling acts as fallback
       };
     } catch (err) {
       console.warn('Realtime SSE stream setup error (will rely on polling):', err);
@@ -218,14 +235,14 @@ class ServerFleetRepository {
     });
   }
 
-  public async refresh(): Promise<void> {
+  public async refresh(forceFresh = false): Promise<void> {
     if (typeof document !== 'undefined' && document.hidden) return;
     if (this.isFetching) return;
     this.isFetching = true;
     try {
       const fsService = await getDirectFirestoreService();
       if (fsService) {
-        this.state = await fsService.fetchFleetStateFromFirestore();
+        this.state = await fsService.fetchFleetStateFromFirestore(forceFresh);
         this.notify();
         return;
       }
@@ -866,16 +883,17 @@ class ServerFleetRepository {
   // SALARY & DRIVER MONTHLY SUMMARY
   // =========================================================================
 
-  public async getDriverMonthlySummary(driverId: string, monthPrefix: string = '2026-10'): Promise<DriverMonthlySummary> {
+  public async getDriverMonthlySummary(driverId: string, monthPrefix?: string): Promise<DriverMonthlySummary> {
     if (!this.state) await this.refresh();
+    const effectiveMonth = monthPrefix || getCurrentMonthPrefix();
     const drivers = this.state?.drivers || [];
     const driver = drivers.find((d) => d.id === driverId);
     if (!driver) throw new Error('Driver not found');
 
     const trips = (this.state?.trips || []).filter((t) => {
       if (t.driver_id !== driverId) return false;
-      if (monthPrefix && monthPrefix !== 'ALL' && t.start_time) {
-        return t.start_time.slice(0, 7) === monthPrefix;
+      if (effectiveMonth && effectiveMonth !== 'ALL' && t.start_time) {
+        return t.start_time.slice(0, 7) === effectiveMonth;
       }
       return true;
     });
@@ -937,7 +955,7 @@ class ServerFleetRepository {
 
     return {
       driver,
-      month: monthPrefix,
+      month: effectiveMonth,
       totalKilometers: totalKm,
       totalDaysWorked: dutyDates.size,
       totalTripsCount: trips.length,
@@ -950,8 +968,9 @@ class ServerFleetRepository {
   // VEHICLE REPORT & DETAIL
   // =========================================================================
 
-  public async getVehicleDetail(vehicleId: string, monthPrefix: string = '2026-10'): Promise<VehicleDetailReport | null> {
+  public async getVehicleDetail(vehicleId: string, monthPrefix?: string): Promise<VehicleDetailReport | null> {
     if (!this.state) await this.refresh();
+    const effectiveMonth = monthPrefix || getCurrentMonthPrefix();
     const cleanQuery = vehicleId.trim().toUpperCase().replace(/\s+/g, '');
     const vehicle = this.state?.vehicles.find((v) =>
       v.id === vehicleId ||
@@ -960,7 +979,7 @@ class ServerFleetRepository {
     );
     if (!vehicle) return null;
 
-    const detailedExpenses = await this.getExpenses({ vehicleId: vehicle.id, monthPrefix });
+    const detailedExpenses = await this.getExpenses({ vehicleId: vehicle.id, monthPrefix: effectiveMonth });
 
     let fuelTotal = 0;
     let fuelLitresTotal = 0;
@@ -988,8 +1007,8 @@ class ServerFleetRepository {
     const totalExpense = fuelTotal + tollTotal + maintenanceTotal + otherTotal;
 
     let monthlyIncome = 0;
-    if (monthPrefix && monthPrefix !== 'ALL') {
-      const incRec = this.state?.vehicleIncomes.find((i) => i.vehicle_id === vehicle.id && i.month === monthPrefix);
+    if (effectiveMonth && effectiveMonth !== 'ALL') {
+      const incRec = this.state?.vehicleIncomes.find((i) => i.vehicle_id === vehicle.id && i.month === effectiveMonth);
       monthlyIncome = incRec ? (typeof incRec.amount === 'number' ? incRec.amount : Number(incRec.amount) || 0) : 0;
     } else {
       monthlyIncome = (this.state?.vehicleIncomes || [])
@@ -1001,8 +1020,8 @@ class ServerFleetRepository {
     const vehicleTrips = (this.state?.trips || [])
       .filter((t) => {
         if (t.vehicle_id !== vehicle.id) return false;
-        if (monthPrefix && monthPrefix !== 'ALL' && t.start_time) {
-          return t.start_time.slice(0, 7) === monthPrefix;
+        if (effectiveMonth && effectiveMonth !== 'ALL' && t.start_time) {
+          return t.start_time.slice(0, 7) === effectiveMonth;
         }
         return true;
       })
@@ -1109,7 +1128,7 @@ class ServerFleetRepository {
 
     return {
       vehicle,
-      selectedMonth: monthPrefix,
+      selectedMonth: effectiveMonth,
       company: vehicle.company || 'Delhivery',
       routeLocation: vehicle.route_location || 'Ad-hoc',
       defaultDrivers: (vehicle.default_driver_names || []).join(', ') || 'Direct',
@@ -1179,8 +1198,9 @@ class ServerFleetRepository {
   // COMPANY REPORT
   // =========================================================================
 
-  public async getCompanyMonthlyReport(companyId: string, monthPrefix: string = '2026-10'): Promise<CompanyMonthlyReport | null> {
+  public async getCompanyMonthlyReport(companyId: string, monthPrefix?: string): Promise<CompanyMonthlyReport | null> {
     if (!this.state) await this.refresh();
+    const effectiveMonth = monthPrefix || getCurrentMonthPrefix();
     const comp = this.state?.companies.find((c) => c.id === companyId);
     if (!comp) return null;
 
@@ -1200,7 +1220,7 @@ class ServerFleetRepository {
 
     const vehicleBreakdowns = await Promise.all(
       companyVehicles.map(async (v) => {
-        const vDetail = await this.getVehicleDetail(v.id, monthPrefix);
+        const vDetail = await this.getVehicleDetail(v.id, effectiveMonth);
         const fuel = vDetail?.expenseSummary?.fuelTotal || 0;
         const toll = vDetail?.expenseSummary?.tollTotal || 0;
         const maint = vDetail?.expenseSummary?.maintenanceTotal || 0;
@@ -1231,7 +1251,7 @@ class ServerFleetRepository {
 
     return {
       company: comp,
-      month: monthPrefix,
+      month: effectiveMonth,
       totalIncome: compTotalIncome,
       totalExpenses: compTotalExpense,
       profitOrLoss: compProfitOrLoss,
@@ -1360,7 +1380,7 @@ class ServerFleetRepository {
     notes?: string | null;
     endLocation?: TripLocation | null;
     isFinalTripOfDuty?: boolean;
-    expenses?: Array<{ expense_type: ExpenseType; amount: number; litres?: number; note?: string }>;
+    expenses?: Array<{ expense_type: ExpenseType; amount: number; litres?: number; note?: string; bill_photo_url?: string | null }>;
   }): Promise<{ distanceKm: number; trip: Trip }> {
     const res = await this.dispatchAction<{ distanceKm: number; trip: Trip }>('endTrip', {
       tripId: data.tripId,
@@ -1393,6 +1413,7 @@ class ServerFleetRepository {
     amount: number;
     litres?: number | null;
     note?: string | null;
+    bill_photo_url?: string | null;
     date?: string;
     isOwner?: boolean;
   }): Promise<Expense> {
@@ -1404,6 +1425,7 @@ class ServerFleetRepository {
       amount: data.amount,
       litres: data.litres,
       note: data.note,
+      billPhotoUrl: data.bill_photo_url,
       date: data.date,
       isOwner: data.isOwner,
     });
@@ -1423,6 +1445,7 @@ class ServerFleetRepository {
       litres?: number | null;
       note?: string | null;
       date?: string;
+      bill_photo_url?: string | null;
     }
   ): Promise<Expense> {
     const res = await this.dispatchAction<{ expense: Expense }>('updateExpense', {
@@ -1432,6 +1455,7 @@ class ServerFleetRepository {
         amount: data.amount,
         litres: data.litres,
         note: data.note,
+        billPhotoUrl: data.bill_photo_url,
         date: data.date,
       },
     });

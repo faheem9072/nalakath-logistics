@@ -22,8 +22,15 @@ import {
   FileSpreadsheet,
   Zap,
   Clock,
+  Receipt,
+  Fuel,
+  Wrench,
+  Eye,
+  Camera,
 } from 'lucide-react';
 import { triggerExcelDownload } from '@/lib/utils/download-excel';
+import { getCurrentMonthPrefix, getTodayDateString, getAvailableMonthOptions } from '@/lib/utils/month-helper';
+import { ExpenseWithDetails } from '@/types/models';
 
 interface DriverDetailViewProps {
   driverId: string;
@@ -37,8 +44,10 @@ export function DriverDetailView({
   onDriverUpdated,
 }: DriverDetailViewProps) {
   const [driver, setDriver] = useState<Driver | null>(null);
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-10');
+  const [selectedMonth, setSelectedMonth] = useState<string>(getCurrentMonthPrefix());
   const [summary, setSummary] = useState<DriverMonthlySummary | null>(null);
+  const [driverExpenses, setDriverExpenses] = useState<ExpenseWithDetails[]>([]);
+  const [viewingBillUrl, setViewingBillUrl] = useState<string | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
@@ -71,7 +80,7 @@ export function DriverDetailView({
   const [addTripVehId, setAddTripVehId] = useState('');
   const [addTripStartPlace, setAddTripStartPlace] = useState('Calicut Logistics Central');
   const [addTripEndPlace, setAddTripEndPlace] = useState('Kochi Terminal');
-  const [addTripDate, setAddTripDate] = useState('2026-10-18');
+  const [addTripDate, setAddTripDate] = useState(getTodayDateString());
   const [addTripStartTime, setAddTripStartTime] = useState('08:00');
   const [addTripEndTime, setAddTripEndTime] = useState('18:00');
   const [addTripStartKm, setAddTripStartKm] = useState('');
@@ -89,11 +98,16 @@ export function DriverDetailView({
   const loadDriverData = async () => {
     setIsLoading(true);
     try {
-      const [drivers, allVehicles] = await Promise.all([
+      const [drivers, allVehicles, exp] = await Promise.all([
         dataRepo.getDrivers(),
         dataRepo.getVehicles(),
+        dataRepo.getDriverExpenses(
+          driverId,
+          selectedMonth === 'ALL' ? undefined : selectedMonth
+        ),
       ]);
       setVehicles(allVehicles);
+      setDriverExpenses(exp);
 
       const current = drivers.find((d) => d.id === driverId);
       if (current) {
@@ -292,7 +306,7 @@ export function DriverDetailView({
     setAddTripVehId(vehicles[0]?.id || '');
     setAddTripStartPlace('');
     setAddTripEndPlace('');
-    setAddTripDate(`${selectedMonth === 'ALL' ? '2026-10' : selectedMonth}-01`);
+    setAddTripDate(selectedMonth === 'ALL' ? getTodayDateString() : `${selectedMonth}-01`);
     setAddTripStartTime('08:00');
     setAddTripEndTime('18:00');
     setAddTripStartKm('');
@@ -412,10 +426,11 @@ export function DriverDetailView({
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="bg-transparent text-xs font-bold text-[#121316] focus:outline-none cursor-pointer"
           >
-            <option value="2026-10">October 2026</option>
-            <option value="2026-09">September 2026</option>
-            <option value="2026-08">August 2026</option>
-            <option value="ALL">All Time</option>
+            {getAvailableMonthOptions().map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -756,6 +771,135 @@ export function DriverDetailView({
                 {trip.notes && (
                   <p className="text-[11px] text-gray-500 italic bg-white p-2 rounded-xl">
                     &quot;{trip.notes}&quot;
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ============================================================ */}
+      {/* DRIVER EXPENSES & BILL SLIP PROOFS                           */}
+      {/* ============================================================ */}
+      <div className="bg-white rounded-[28px] p-5 border border-gray-100 shadow-2xs space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+              <Receipt className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-extrabold text-[#121316] uppercase tracking-wider">
+                Driver Expenses & Bills
+              </h3>
+              <p className="text-[11px] text-gray-500 font-medium">
+                Fuel, Toll &amp; Maintenance logged by {driver?.full_name || 'Driver'}
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
+            {driverExpenses.length} entries
+          </span>
+        </div>
+
+        {/* Expense Totals breakdown */}
+        <div className="grid grid-cols-3 gap-2">
+          <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-100 text-center">
+            <span className="text-[10px] font-bold text-amber-800 uppercase flex items-center justify-center gap-1">
+              <Fuel className="w-3 h-3" /> Fuel
+            </span>
+            <p className="text-base font-black text-amber-950 mt-0.5">
+              ₹{driverExpenses.filter((e) => e.expense_type === 'Fuel').reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}
+            </p>
+          </div>
+          <div className="p-3 bg-blue-50/60 rounded-2xl border border-blue-100 text-center">
+            <span className="text-[10px] font-bold text-blue-800 uppercase flex items-center justify-center gap-1">
+              <Receipt className="w-3 h-3" /> Toll
+            </span>
+            <p className="text-base font-black text-blue-950 mt-0.5">
+              ₹{driverExpenses.filter((e) => e.expense_type === 'Toll').reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}
+            </p>
+          </div>
+          <div className="p-3 bg-purple-50/60 rounded-2xl border border-purple-100 text-center">
+            <span className="text-[10px] font-bold text-purple-800 uppercase flex items-center justify-center gap-1">
+              <Wrench className="w-3 h-3" /> Maint.
+            </span>
+            <p className="text-base font-black text-purple-950 mt-0.5">
+              ₹{driverExpenses.filter((e) => e.expense_type === 'Maintenance').reduce((s, e) => s + Number(e.amount || 0), 0).toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        {driverExpenses.length === 0 ? (
+          <p className="text-xs text-gray-400 py-6 text-center">
+            No expenses or fuel slips logged by this driver in {selectedMonth === 'ALL' ? 'fleet history' : selectedMonth}.
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {driverExpenses.map((exp) => (
+              <div
+                key={exp.id}
+                className="p-3.5 rounded-2xl border border-gray-100 bg-[#F8F9FA] flex flex-col gap-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                          exp.expense_type === 'Fuel'
+                            ? 'bg-amber-100 text-amber-800'
+                            : exp.expense_type === 'Toll'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-purple-100 text-purple-800'
+                        }`}
+                      >
+                        {exp.expense_type}
+                      </span>
+                      <span className="text-xs font-bold text-gray-500">
+                        {exp.date}
+                      </span>
+                      {exp.vehicle && (
+                        <span className="text-xs text-gray-600 font-semibold">
+                          • {exp.vehicle.registration_number}
+                        </span>
+                      )}
+                    </div>
+                    {exp.note && (
+                      <p className="text-xs text-gray-700 font-medium">
+                        {exp.note}
+                      </p>
+                    )}
+                    {exp.litres && (
+                      <p className="text-[11px] text-gray-500">
+                        Fuel: {exp.litres} L
+                      </p>
+                    )}
+                  </div>
+
+                  <span className="text-sm font-black text-[#121316] shrink-0">
+                    ₹{Number(exp.amount).toLocaleString()}
+                  </span>
+                </div>
+
+                {/* Bill / Petrol Slip Photo Action */}
+                {exp.bill_photo_url ? (
+                  <div className="pt-2 border-t border-gray-200/50 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => setViewingBillUrl(exp.bill_photo_url!)}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-300 text-amber-900 text-xs font-bold hover:bg-amber-500/20 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <Receipt className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                      <span>View Petrol Pump Bill / Slip</span>
+                      <Eye className="w-3.5 h-3.5 text-amber-700 ml-1 shrink-0" />
+                    </button>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      Proof Attached
+                    </span>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-gray-400 italic pt-1 border-t border-gray-200/40">
+                    No bill photo attached
                   </p>
                 )}
               </div>
@@ -1324,6 +1468,57 @@ export function DriverDetailView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: View Petrol Pump Bill Photo */}
+      {viewingBillUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="relative max-w-lg w-full bg-white rounded-3xl p-4 sm:p-5 space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-4 h-4 text-amber-600" />
+                <h4 className="text-sm font-black text-gray-900">
+                  Petrol Pump Bill / Expense Slip
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingBillUrl(null)}
+                className="p-1.5 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl bg-black/5 border border-gray-200 max-h-[70vh] flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={viewingBillUrl}
+                alt="Bill slip receipt"
+                className="max-h-[70vh] w-auto max-w-full object-contain"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <a
+                href={viewingBillUrl}
+                download="petrol-bill.jpg"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-2 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl transition-all inline-flex items-center gap-1.5"
+              >
+                Open Full Size
+              </a>
+              <button
+                type="button"
+                onClick={() => setViewingBillUrl(null)}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

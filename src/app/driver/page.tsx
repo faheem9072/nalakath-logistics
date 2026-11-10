@@ -28,7 +28,11 @@ import {
   X,
   History,
   Timer,
+  Camera,
+  Eye,
+  ImageIcon,
 } from 'lucide-react';
+import { compressBillImage } from '@/lib/utils/image-compression';
 
 function DriverDashboardContent() {
   const router = useRouter();
@@ -64,6 +68,8 @@ function DriverDashboardContent() {
   const [expTollAmount, setExpTollAmount] = useState('');
   const [expMaintAmount, setExpMaintAmount] = useState('');
   const [expNote, setExpNote] = useState('');
+  const [expBillData, setExpBillData] = useState<string | null>(null);
+  const [isCompressingBill, setIsCompressingBill] = useState(false);
   const [expError, setExpError] = useState<string | null>(null);
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
   const [expenseSuccessMsg, setExpenseSuccessMsg] = useState<string | null>(null);
@@ -76,6 +82,8 @@ function DriverDashboardContent() {
   const [endTollAmount, setEndTollAmount] = useState('');
   const [endMaintAmount, setEndMaintAmount] = useState('');
   const [endExpenseNote, setEndExpenseNote] = useState('');
+  const [endBillData, setEndBillData] = useState<string | null>(null);
+  const [isCompressingEndBill, setIsCompressingEndBill] = useState(false);
   const [isSubmittingEndTrip, setIsSubmittingEndTrip] = useState(false);
   const [endTripError, setEndTripError] = useState<string | null>(null);
 
@@ -92,6 +100,7 @@ function DriverDashboardContent() {
   // Driver History state
   const [driverSummary, setDriverSummary] = useState<DriverMonthlySummary | null>(null);
   const [driverExpenses, setDriverExpenses] = useState<ExpenseWithDetails[]>([]);
+  const [viewingDriverBillUrl, setViewingDriverBillUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (tabParam === 'history') {
@@ -255,6 +264,7 @@ function DriverDashboardContent() {
             expense_type: 'Fuel',
             amount: fuel,
             note: noteVal,
+            bill_photo_url: expBillData,
           })
         );
       }
@@ -267,6 +277,7 @@ function DriverDashboardContent() {
             expense_type: 'Toll',
             amount: toll,
             note: noteVal,
+            bill_photo_url: hasFuel ? undefined : expBillData,
           })
         );
       }
@@ -279,6 +290,7 @@ function DriverDashboardContent() {
             expense_type: 'Maintenance',
             amount: maint,
             note: noteVal,
+            bill_photo_url: !hasFuel && !hasToll ? expBillData : undefined,
           })
         );
       }
@@ -290,6 +302,7 @@ function DriverDashboardContent() {
       setExpTollAmount('');
       setExpMaintAmount('');
       setExpNote('');
+      setExpBillData(null);
       setExpenseSuccessMsg('Expenses saved successfully!');
       setTimeout(() => setExpenseSuccessMsg(null), 3000);
       await loadDriverSession();
@@ -310,6 +323,7 @@ function DriverDashboardContent() {
     setEndTollAmount('');
     setEndMaintAmount('');
     setEndExpenseNote('');
+    setEndBillData(null);
     setEndTripError(null);
     setIsEndTripOpen(true);
   };
@@ -334,7 +348,12 @@ function DriverDashboardContent() {
       const endLocation = await captureCurrentLocation();
 
       // Collect single-form expense amounts (Fuel, Toll, Maintenance)
-      const finalExpenses: Array<{ expense_type: ExpenseType; amount: number; note?: string }> = [];
+      const finalExpenses: Array<{
+        expense_type: ExpenseType;
+        amount: number;
+        note?: string;
+        bill_photo_url?: string | null;
+      }> = [];
       const noteVal = endExpenseNote.trim() || undefined;
 
       const fAmt = parseFloat(endFuelAmount);
@@ -343,6 +362,7 @@ function DriverDashboardContent() {
           expense_type: 'Fuel',
           amount: fAmt,
           note: noteVal,
+          bill_photo_url: endBillData || undefined,
         });
       }
       const tAmt = parseFloat(endTollAmount);
@@ -351,6 +371,7 @@ function DriverDashboardContent() {
           expense_type: 'Toll',
           amount: tAmt,
           note: noteVal,
+          bill_photo_url: (!isNaN(fAmt) && fAmt > 0) ? undefined : (endBillData || undefined),
         });
       }
       const mAmt = parseFloat(endMaintAmount);
@@ -359,6 +380,7 @@ function DriverDashboardContent() {
           expense_type: 'Maintenance',
           amount: mAmt,
           note: noteVal,
+          bill_photo_url: ((!isNaN(fAmt) && fAmt > 0) || (!isNaN(tAmt) && tAmt > 0)) ? undefined : (endBillData || undefined),
         });
       }
 
@@ -373,6 +395,7 @@ function DriverDashboardContent() {
       const totalTripExp = finalExpenses.reduce((sum, x) => sum + x.amount, 0);
 
       setIsEndTripOpen(false);
+      setEndBillData(null);
       setActiveTrip(null);
       setCompletedSummary({
         distanceKm: res.distanceKm,
@@ -918,21 +941,50 @@ function DriverDashboardContent() {
                     {driverExpenses.map((exp) => (
                       <div
                         key={exp.id}
-                        className="p-3 rounded-2xl bg-[#F8F9FA] border border-gray-100 flex items-center justify-between gap-3 text-xs"
+                        className="p-3 rounded-2xl bg-[#F8F9FA] border border-gray-100 flex flex-col gap-2 text-xs"
                       >
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold text-[#121316]">{exp.expense_type}</span>
-                            <span className="text-gray-400">•</span>
-                            <span className="text-gray-500">{exp.date}</span>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                  exp.expense_type === 'Fuel'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : exp.expense_type === 'Toll'
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-purple-100 text-purple-800'
+                                }`}
+                              >
+                                {exp.expense_type}
+                              </span>
+                              <span className="text-gray-400">•</span>
+                              <span className="text-gray-500 font-medium">{exp.date}</span>
+                            </div>
+                            {exp.note && <p className="text-gray-700 mt-1 font-medium">{exp.note}</p>}
                           </div>
-                          {exp.note && <p className="text-gray-500 mt-0.5">{exp.note}</p>}
+                          <div className="text-right">
+                            <span className="font-black text-sm text-[#121316]">
+                              ₹{Number(exp.amount).toLocaleString()}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <span className="font-black text-sm text-[#121316]">
-                            ₹{Number(exp.amount).toLocaleString()}
-                          </span>
-                        </div>
+
+                        {exp.bill_photo_url && (
+                          <div className="pt-1.5 border-t border-gray-200/50 flex items-center justify-between">
+                            <button
+                              type="button"
+                              onClick={() => setViewingDriverBillUrl(exp.bill_photo_url!)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-300 text-amber-900 text-[11px] font-bold hover:bg-amber-500/20 active:scale-95 transition-all cursor-pointer"
+                            >
+                              <Receipt className="w-3.5 h-3.5 text-amber-700" />
+                              <span>View Petrol Pump Bill</span>
+                              <Eye className="w-3 h-3 text-amber-700 ml-0.5" />
+                            </button>
+                            <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                              Slip Saved
+                            </span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -1043,6 +1095,72 @@ function DriverDashboardContent() {
                     onChange={(e) => setExpNote(e.target.value)}
                     className="w-full h-11 px-3 bg-[#F8F9FA] border border-gray-200 rounded-xl text-sm text-[#121316] focus:outline-none focus:border-gray-400"
                   />
+                </div>
+
+                {/* Petrol Pump Bill / Slip Photo Upload */}
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-xs font-bold text-gray-700 uppercase flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Petrol Bill / Slip Photo</span>
+                    </span>
+                    <span className="text-[10px] text-gray-400 font-normal">Optional</span>
+                  </label>
+
+                  {expBillData ? (
+                    <div className="relative p-2.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={expBillData}
+                        alt="Bill slip preview"
+                        className="w-12 h-12 object-cover rounded-xl border border-emerald-300 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-bold text-emerald-950 truncate">Bill Slip Attached</p>
+                        <p className="text-[10px] text-emerald-700 font-medium">Ready to sync with owner</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setExpBillData(null)}
+                        className="p-1.5 rounded-xl text-emerald-700 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title="Remove photo"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex items-center justify-center gap-2 w-full py-3 px-3 rounded-2xl border-2 border-dashed border-gray-300 hover:border-gray-400 bg-[#F8F9FA] hover:bg-gray-100 cursor-pointer transition-all">
+                      <Camera className="w-4 h-4 text-gray-600" />
+                      <span className="text-xs font-bold text-gray-700">
+                        {isCompressingBill ? 'Processing photo...' : 'Take Photo of Bill / Upload Slip'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        className="hidden"
+                        disabled={isCompressingBill}
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            setIsCompressingBill(true);
+                            const compressed = await compressBillImage(file, {
+                              maxWidth: 1024,
+                              maxHeight: 1024,
+                              quality: 0.65,
+                            });
+                            setExpBillData(compressed);
+                          } catch (err) {
+                            console.error('Failed to compress bill:', err);
+                            alert('Failed to process image. Please try again.');
+                          } finally {
+                            setIsCompressingBill(false);
+                          }
+                        }}
+                      />
+                    </label>
+                  )}
                 </div>
 
                 <div className="pt-2 flex items-center gap-2">
@@ -1191,6 +1309,63 @@ function DriverDashboardContent() {
                       onChange={(e) => setEndExpenseNote(e.target.value)}
                       className="w-full h-9 px-2.5 bg-white border border-gray-200 rounded-xl text-xs text-[#121316] focus:outline-none focus:border-gray-400"
                     />
+
+                    {/* Bill Photo for End Trip Expenses */}
+                    <div className="pt-1 border-t border-gray-200/60">
+                      {endBillData ? (
+                        <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2.5">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={endBillData}
+                            alt="End bill preview"
+                            className="w-10 h-10 object-cover rounded-lg border border-emerald-300 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-bold text-emerald-950 truncate">Bill Photo Attached</p>
+                            <p className="text-[9px] text-emerald-700">Will be saved to trip</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setEndBillData(null)}
+                            className="p-1 text-emerald-700 hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center justify-center gap-2 w-full py-2.5 px-3 rounded-xl border border-dashed border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 cursor-pointer transition-all">
+                          <Camera className="w-3.5 h-3.5 text-gray-500" />
+                          <span className="text-[11px] font-bold text-gray-600">
+                            {isCompressingEndBill ? 'Processing...' : 'Attach Petrol Pump Bill / Slip Photo'}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            disabled={isCompressingEndBill}
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                setIsCompressingEndBill(true);
+                                const compressed = await compressBillImage(file, {
+                                  maxWidth: 1024,
+                                  maxHeight: 1024,
+                                  quality: 0.65,
+                                });
+                                setEndBillData(compressed);
+                              } catch (err) {
+                                console.error('Failed to compress end trip bill:', err);
+                                alert('Failed to process image. Please try again.');
+                              } finally {
+                                setIsCompressingEndBill(false);
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1242,6 +1417,46 @@ function DriverDashboardContent() {
             router.replace(`/driver${tab === 'history' ? '?tab=history' : ''}`);
           }}
         />
+
+        {/* Modal: View Petrol Pump Bill Photo (Driver History) */}
+        {viewingDriverBillUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="relative max-w-sm w-full bg-white rounded-3xl p-4 space-y-3 shadow-2xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Receipt className="w-4 h-4 text-amber-600" />
+                  <h4 className="text-xs font-black text-gray-900 uppercase">
+                    Petrol Pump Bill / Slip
+                  </h4>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewingDriverBillUrl(null)}
+                  className="p-1.5 rounded-full text-gray-400 hover:text-black hover:bg-gray-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="overflow-hidden rounded-2xl bg-black/5 border border-gray-200 max-h-[60vh] flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={viewingDriverBillUrl}
+                  alt="Bill slip receipt"
+                  className="max-h-[60vh] w-auto max-w-full object-contain"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingDriverBillUrl(null)}
+                className="w-full h-11 bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs font-bold rounded-xl transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

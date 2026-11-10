@@ -10,6 +10,7 @@ import {
   where,
   orderBy,
   writeBatch,
+  onSnapshot,
 } from 'firebase/firestore';
 import type { Driver, Vehicle, Trip, Expense, Team, Route, Assignment } from '@/types/database';
 import type { Company, FleetState } from '@/lib/data-service';
@@ -42,11 +43,52 @@ export async function safeSetDoc(ref: any, data: any, options?: any) {
 
 let cachedFleetState: FleetState | null = null;
 let lastCacheTime = 0;
-const CACHE_TTL_MS = 60000; // 60s warm cache with in-memory mutations
+const CACHE_TTL_MS = 2000; // 2s cache for snappy realtime freshness
 
 export function invalidateFleetCache() {
   cachedFleetState = null;
   lastCacheTime = 0;
+}
+
+/**
+ * Real-time listener for Cloud Firestore collections
+ * Automatically fires across all connected devices (Owner and Driver)
+ * whenever a trip, expense, driver, or vehicle is added or updated.
+ */
+export function subscribeFleetFromFirestore(onChange: (state: FleetState) => void): () => void {
+  if (typeof window === 'undefined') return () => {};
+  let firestore: any;
+  try {
+    firestore = requireDb();
+  } catch {
+    return () => {};
+  }
+
+  let debounceTimer: any = null;
+  const triggerFreshFetch = () => {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(async () => {
+      try {
+        const fresh = await fetchFleetStateFromFirestore(true);
+        onChange(fresh);
+      } catch (err) {
+        console.warn('Realtime firestore listener refresh error:', err);
+      }
+    }, 250);
+  };
+
+  const unsubTrips = onSnapshot(collection(firestore, 'trips'), triggerFreshFetch, (err) => console.warn('Trips snap error:', err));
+  const unsubExpenses = onSnapshot(collection(firestore, 'expenses'), triggerFreshFetch, (err) => console.warn('Expenses snap error:', err));
+  const unsubVehicles = onSnapshot(collection(firestore, 'vehicles'), triggerFreshFetch, (err) => console.warn('Vehicles snap error:', err));
+  const unsubDrivers = onSnapshot(collection(firestore, 'drivers'), triggerFreshFetch, (err) => console.warn('Drivers snap error:', err));
+
+  return () => {
+    unsubTrips();
+    unsubExpenses();
+    unsubVehicles();
+    unsubDrivers();
+    if (debounceTimer) clearTimeout(debounceTimer);
+  };
 }
 
 export function updateCachedItem<K extends keyof FleetState>(key: K, item: any, idKey: string = 'id') {
@@ -901,7 +943,7 @@ export async function endTripInFirestore(data: {
   notes?: string | null;
   isFinalTripOfDuty?: boolean;
   endLocation?: { latitude?: number; longitude?: number; address?: string; place_name?: string; no_location?: boolean } | null;
-  expenses?: Array<{ expense_type: 'Fuel' | 'Toll' | 'Maintenance' | 'Other'; amount: number; litres?: number; note?: string }>;
+  expenses?: Array<{ expense_type: 'Fuel' | 'Toll' | 'Maintenance' | 'Other'; amount: number; litres?: number; note?: string; bill_photo_url?: string | null; billPhotoUrl?: string | null }>;
 }): Promise<{ trip: Trip; distanceKm: number }> {
   const firestore = requireDb();
   const tripRef = doc(firestore, 'trips', data.tripId);
@@ -957,6 +999,7 @@ export async function endTripInFirestore(data: {
         amount: Number(exp.amount),
         litres: exp.litres !== undefined ? Number(exp.litres) : null,
         note: exp.note || null,
+        bill_photo_url: exp.bill_photo_url || exp.billPhotoUrl || null,
         date: now.slice(0, 10),
         created_at: now,
         updated_at: now,
@@ -1172,6 +1215,8 @@ export async function createExpenseInFirestore(data: {
   date?: string;
   litres?: number | null;
   note?: string | null;
+  billPhotoUrl?: string | null;
+  bill_photo_url?: string | null;
   tripId?: string | null;
   trip_id?: string | null;
 }): Promise<Expense> {
@@ -1188,6 +1233,7 @@ export async function createExpenseInFirestore(data: {
     amount: Number(data.amount),
     litres: data.litres !== undefined ? Number(data.litres) : null,
     note: data.note || null,
+    bill_photo_url: data.billPhotoUrl || data.bill_photo_url || null,
     date: data.date || now.slice(0, 10),
     created_at: now,
     updated_at: now,
@@ -1217,6 +1263,9 @@ export async function updateExpenseInFirestore(id: string, data: any): Promise<E
   if (data.litres !== undefined) updatedData.litres = data.litres !== null ? Number(data.litres) : null;
   if (data.note !== undefined) updatedData.note = data.note;
   if (data.date !== undefined) updatedData.date = data.date;
+  if (data.billPhotoUrl !== undefined || data.bill_photo_url !== undefined) {
+    updatedData.bill_photo_url = data.billPhotoUrl ?? data.bill_photo_url ?? null;
+  }
 
   await safeSetDoc(expRef, updatedData, { merge: true });
   invalidateFleetCache();
