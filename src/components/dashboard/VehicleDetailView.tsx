@@ -147,8 +147,8 @@ export function VehicleDetailView({
     setTimeout(() => setSavedMessage(null), 3500);
   };
 
-  const loadData = async () => {
-    setIsLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [data, drvList, compList] = await Promise.all([
         dataRepo.getVehicleDetail(effectiveQuery, selectedMonth),
@@ -185,8 +185,10 @@ export function VehicleDetailView({
   };
 
   useEffect(() => {
-    loadData();
-    const unsubRepo = dataRepo.subscribe(loadData);
+    loadData(false);
+    const unsubRepo = dataRepo.subscribe(() => {
+      loadData(true);
+    });
 
     return () => {
       unsubRepo();

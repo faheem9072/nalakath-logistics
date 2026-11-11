@@ -110,7 +110,8 @@ function DriverDashboardContent() {
     }
   }, [tabParam]);
 
-  const loadDriverSession = async () => {
+  const loadDriverSession = async (silent = false) => {
+    if (!silent && !driver) setIsLoading(true);
     try {
       const p = await dataRepo.getCurrentProfile();
       if (!p || p.role !== 'driver') {
@@ -162,10 +163,10 @@ function DriverDashboardContent() {
   };
 
   useEffect(() => {
-    loadDriverSession();
+    loadDriverSession(false);
     // Subscribe to shared state updates
     const unsub = dataRepo.subscribe(() => {
-      loadDriverSession();
+      loadDriverSession(true);
     });
     return unsub;
   }, []);

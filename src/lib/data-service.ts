@@ -163,18 +163,20 @@ class ServerFleetRepository {
         this.sessionDriverId = null;
       }
 
-      // Initial fetch and start live sync polling (5s fallback interval, active only when tab is visible)
-      this.refresh(true);
+      // Initial fetch and start live sync
+      this.refresh(false);
       this.initRealtimeStream();
+
+      // Gentle fallback heartbeat (30s interval) only when tab is visible; real-time onSnapshot pushes instant live updates
       this.pollTimer = setInterval(() => {
         if (typeof document !== 'undefined' && !document.hidden) {
-          this.refresh(true);
+          this.refresh(false);
         }
-      }, 5000);
+      }, 30000);
 
       document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
-          this.refresh(true);
+          this.refresh(false);
         }
       });
     }
@@ -341,7 +343,7 @@ class ServerFleetRepository {
             result = { success: true };
             break;
         }
-        await this.refresh();
+        this.notify();
         return result as T;
       }
 

@@ -95,8 +95,8 @@ export function DriverDetailView({
     setTimeout(() => setSavedMessage(null), 3500);
   };
 
-  const loadDriverData = async () => {
-    setIsLoading(true);
+  const loadDriverData = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     try {
       const [drivers, allVehicles, exp] = await Promise.all([
         dataRepo.getDrivers(),
@@ -133,8 +133,10 @@ export function DriverDetailView({
   };
 
   useEffect(() => {
-    loadDriverData();
-    const unsub = dataRepo.subscribe(loadDriverData);
+    loadDriverData(false);
+    const unsub = dataRepo.subscribe(() => {
+      loadDriverData(true);
+    });
 
     return () => {
       unsub();

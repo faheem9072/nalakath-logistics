@@ -12,7 +12,7 @@ import {
   writeBatch,
   onSnapshot,
 } from 'firebase/firestore';
-import type { Driver, Vehicle, Trip, Expense, Team, Route, Assignment } from '@/types/database';
+import type { Driver, Vehicle, Trip, Expense, Team, Route, Assignment, TripLocation } from '@/types/database';
 import type { Company, FleetState } from '@/lib/data-service';
 
 function requireDb() {
@@ -43,7 +43,7 @@ export async function safeSetDoc(ref: any, data: any, options?: any) {
 
 let cachedFleetState: FleetState | null = null;
 let lastCacheTime = 0;
-const CACHE_TTL_MS = 2000; // 2s cache for snappy realtime freshness
+const CACHE_TTL_MS = 30000; // 30s cache; real-time onSnapshot pushes instant live updates
 
 export function invalidateFleetCache() {
   cachedFleetState = null;
@@ -499,7 +499,6 @@ export async function deleteDriverInFirestore(
   }
 
   removeCachedItem('drivers', realId);
-  invalidateFleetCache();
 
   return {
     success: true,
@@ -657,7 +656,6 @@ export async function deleteVehicleInFirestore(
   }
 
   removeCachedItem('vehicles', realId);
-  invalidateFleetCache();
 
   return {
     success: true,
@@ -933,7 +931,8 @@ export async function startTripInFirestore(data: {
     { merge: true }
   );
 
-  invalidateFleetCache();
+  updateCachedItem('trips', newTrip);
+  updateCachedItem('vehicles', { id: vId, current_odometer: Number(startingKm), updated_at: now });
   return newTrip;
 }
 
@@ -990,7 +989,7 @@ export async function endTripInFirestore(data: {
     for (const exp of data.expenses) {
       if (!exp.amount || exp.amount <= 0) continue;
       const expId = `exp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      await safeSetDoc(doc(firestore, 'expenses', expId), {
+      const newExpItem = {
         id: expId,
         trip_id: data.tripId,
         vehicle_id: trip.vehicle_id,
@@ -1003,14 +1002,28 @@ export async function endTripInFirestore(data: {
         date: now.slice(0, 10),
         created_at: now,
         updated_at: now,
-      });
+      };
+      await safeSetDoc(doc(firestore, 'expenses', expId), newExpItem);
+      updateCachedItem('expenses', newExpItem);
     }
   }
 
-  invalidateFleetCache();
+  const updatedTrip: Trip = {
+    ...trip,
+    end_odometer: data.endOdometer,
+    driver_notes: data.notes?.trim() || trip.driver_notes || null,
+    status: 'completed',
+    end_time: now,
+    end_location:
+      data.endLocation && typeof data.endLocation.latitude === 'number' && typeof data.endLocation.longitude === 'number'
+        ? (data.endLocation as TripLocation)
+        : null,
+    updated_at: now,
+  };
+  updateCachedItem('trips', updatedTrip);
+  updateCachedItem('vehicles', { id: trip.vehicle_id, current_odometer: data.endOdometer, updated_at: now });
 
-  const finalSnap = await getDoc(tripRef);
-  return { trip: { id: data.tripId, ...(finalSnap.data() as any) } as Trip, distanceKm };
+  return { trip: updatedTrip, distanceKm };
 }
 
 export async function allowDriverOverrideInFirestore(driverId: string, enabled: boolean): Promise<void> {
@@ -1075,7 +1088,10 @@ export async function recordMaintenanceInFirestore(data: {
     );
   }
 
-  invalidateFleetCache();
+  updateCachedItem('expenses', expense);
+  if (data.odometer && data.odometer > 0) {
+    updateCachedItem('vehicles', { id: data.vehicleId, current_odometer: Number(data.odometer), updated_at: now });
+  }
   return { success: true, expense };
 }
 
@@ -1130,7 +1146,8 @@ export async function addManualTripInFirestore(data: {
     }
   }
 
-  invalidateFleetCache();
+  updateCachedItem('trips', newTrip);
+  updateCachedItem('vehicles', { id: data.vehicleId, current_odometer: data.endOdometer, updated_at: now });
   return newTrip;
 }
 
@@ -1173,10 +1190,10 @@ export async function updateTripInFirestore(id: string, data: any): Promise<Trip
   }
 
   await safeSetDoc(tripRef, updatedData, { merge: true });
-  invalidateFleetCache();
 
-  const finalSnap = await getDoc(tripRef);
-  return { id, ...(finalSnap.data() as any) } as Trip;
+  const updatedTrip: Trip = { ...(snap.data() || {}), ...updatedData, id } as Trip;
+  updateCachedItem('trips', updatedTrip);
+  return updatedTrip;
 }
 
 export async function deleteTripInFirestore(
@@ -1240,7 +1257,7 @@ export async function createExpenseInFirestore(data: {
   };
 
   await safeSetDoc(doc(firestore, 'expenses', id), newExpense);
-  invalidateFleetCache();
+  updateCachedItem('expenses', newExpense);
   return newExpense;
 }
 
@@ -1268,10 +1285,10 @@ export async function updateExpenseInFirestore(id: string, data: any): Promise<E
   }
 
   await safeSetDoc(expRef, updatedData, { merge: true });
-  invalidateFleetCache();
 
-  const finalSnap = await getDoc(expRef);
-  return { id, ...(finalSnap.data() as any) } as Expense;
+  const updatedExpense: Expense = { ...(snap.data() || {}), ...updatedData, id } as Expense;
+  updateCachedItem('expenses', updatedExpense);
+  return updatedExpense;
 }
 
 export async function deleteExpenseInFirestore(id: string): Promise<{ success: boolean; deletedRows: number }> {
@@ -1294,14 +1311,21 @@ export async function deleteExpenseInFirestore(id: string): Promise<{ success: b
 export async function saveVehicleIncomeInFirestore(vehicleId: string, month: string, amount: number): Promise<void> {
   const firestore = requireDb();
   const id = `inc-${vehicleId}-${month}`;
+  const now = new Date().toISOString();
   await safeSetDoc(doc(firestore, 'vehicle_incomes', id), {
     id,
     vehicle_id: vehicleId,
     month,
     amount: Number(amount),
-    updated_at: new Date().toISOString(),
+    updated_at: now,
   });
-  invalidateFleetCache();
+  updateCachedItem('vehicleIncomes', {
+    id,
+    vehicle_id: vehicleId,
+    month,
+    amount: Number(amount),
+    updated_at: now,
+  });
 }
 
 // -----------------------------------------------------------------------------
